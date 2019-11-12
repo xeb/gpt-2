@@ -211,12 +211,15 @@ def main(tpu_cluster=None):
         parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
         print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
 
-        global_step = tf.Variable(0, trainable=False)
+        with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
+            global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
+            current_step = 0
+            global_step.load(current_step, session=sess)
         if args.learning_rate_cos:
-          lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
-              warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
+            lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
+                warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
         else:
-          lr = tf.constant(args.learning_rate)
+            lr = tf.constant(args.learning_rate)
 
         if args.optimizer == 'adam':
             opt = tf.train.AdamOptimizer(learning_rate=lr)
@@ -440,8 +443,7 @@ def main(tpu_cluster=None):
                             avg_loss[1] * 0.99 + 1.0)
 
                 now = time.time()
-                print(
-                        '[{counter} | {time:2.4f} | {delta:2.2f} | {ops:2.6f}/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.6f}'
+                print('[{counter} | {time:2.4f} | {delta:2.2f} | {ops:2.6f}/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.6f} step={step}'
                     .format(
                         counter=counter,
                         time=now - start_time,
@@ -449,10 +451,14 @@ def main(tpu_cluster=None):
                         ops=args.batch_size / (now - prev_time),
                         rate=v_rate,
                         loss=v_loss,
-                        avg=avg_loss[0] / avg_loss[1]))
+                        avg=avg_loss[0] / avg_loss[1],
+                        step=current_step,
+                        ))
                 prev_time = now
 
                 counter += 1
+                current_step += 1
+                global_step.load(current_step, session=sess)
 
                 if args.debug_print_all_vars:
                     print('all variables:')
