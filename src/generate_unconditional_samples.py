@@ -3,6 +3,7 @@
 import os
 import sys
 sys.path += [os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src')]
+sys.path += [os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))]
 
 import fire
 import json
