@@ -23,6 +23,7 @@ import memory_saving_gradients
 from glob import glob
 import re
 import tflex
+import tflex_sgdr
 
 CHECKPOINT_DIR = 'checkpoint'
 SAMPLE_DIR = 'samples'
@@ -38,6 +39,10 @@ parser.add_argument('--combine', metavar='CHARS', type=int, default=50000, help=
 
 parser.add_argument('--batch_size', metavar='SIZE', type=int, default=1, help='Batch size')
 parser.add_argument('--learning_rate', metavar='LR', type=float, default=0.00002, help='Learning rate for Adam')
+parser.add_argument('--learning_rate_min', type=float, default=0.00001, help='Minimum learning rate')
+parser.add_argument('--learning_rate_cos', default=False, action='store_true', help='Use learn rate cosine annealing')
+parser.add_argument('--learning_rate_warmup', type=int, default=100, help='Learning rate warmup for cosine annealing')
+parser.add_argument('--learning_rate_period', type=int, default=100, help='Learning rate period for cosine annealing')
 parser.add_argument('--accumulate_gradients', metavar='N', type=int, default=1, help='Accumulate gradients across N minibatches.')
 parser.add_argument('--memory_saving_gradients', default=False, action='store_true', help='Use gradient checkpointing to reduce vram usage.')
 parser.add_argument('--only_train_transformer_layers', default=False, action='store_true', help='Restrict training to the transformer blocks.')
@@ -206,10 +211,17 @@ def main(tpu_cluster=None):
         parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
         print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
 
+        global_step = tf.Variable(0, trainable=False)
+        if args.learning_rate_cos:
+          lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
+              warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
+        else:
+          lr = tf.constant(args.learning_rate)
+
         if args.optimizer == 'adam':
-            opt = tf.train.AdamOptimizer(learning_rate=args.learning_rate)
+            opt = tf.train.AdamOptimizer(learning_rate=lr)
         elif args.optimizer == 'sgd':
-            opt = tf.train.GradientDescentOptimizer(learning_rate=args.learning_rate)
+            opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
         elif args.optimizer == 'ada':
             import tensor2tensor.utils.optimize
             from tensor2tensor.utils import hparam
@@ -218,7 +230,7 @@ def main(tpu_cluster=None):
             ada_hparams = registry.hparams('afx_mimic_adam')
             ada_hparams.optimizer_adafactor_beta1 = 0.0
             ada_hparams.optimizer_adafactor_factored = True
-            opt = tensor2tensor.utils.optimize.adafactor(learning_rate=args.learning_rate, hparams=ada_hparams)
+            opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
         else:
             exit('Bad optimizer:', args.optimizer)
         
@@ -247,7 +259,7 @@ def main(tpu_cluster=None):
             opt_apply = opt.apply_gradients(opt_grads)
             summary_loss = tf.summary.scalar('loss', loss)
 
-        summary_lr = tf.summary.scalar('learning_rate', args.learning_rate)
+        summary_lr = tf.summary.scalar('learning_rate', lr)
         summaries = tf.summary.merge([summary_lr, summary_loss])
 
         summary_log = tf.summary.FileWriter(
@@ -409,12 +421,12 @@ def main(tpu_cluster=None):
                         say('Running opt_compute...')
                         sess.run(opt_compute, feed_dict={context: batch})
                     say('Running opt_apply...')
-                    (v_loss, v_summary) = sess.run((opt_apply, summaries))
+                    (v_loss, v_summary, v_rate) = sess.run((opt_apply, summaries, lr))
                 else:
                     batch = sample_batch()
                     say('Running opt_apply...')
-                    (_, v_loss, v_summary) = sess.run(
-                        (opt_apply, loss, summaries),
+                    (_, v_loss, v_summary, v_rate) = sess.run(
+                        (opt_apply, loss, summaries, lr),
                         feed_dict={context: batch})
 
                 if args.float16:
@@ -428,12 +440,13 @@ def main(tpu_cluster=None):
 
                 now = time.time()
                 print(
-                        '[{counter} | {time:2.4f} | {delta:2.2f} | {ops:2.6f}/s] loss={loss:2.4f} avg={avg:2.4f}'
+                        '[{counter} | {time:2.4f} | {delta:2.2f} | {ops:2.6f}/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.6f}'
                     .format(
                         counter=counter,
                         time=now - start_time,
                         delta=now - prev_time,
                         ops=args.batch_size / (now - prev_time),
+                        rate=v_rate,
                         loss=v_loss,
                         avg=avg_loss[0] / avg_loss[1]))
                 prev_time = now
