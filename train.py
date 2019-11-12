@@ -109,6 +109,8 @@ parser.add_argument('--debug_before_training', default=False, action='store_true
 
 parser.add_argument('--dropout', type=float, default=0.1, help="Dropout value. Disabled if set <= 0")
 
+parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for dataset sampler. Disabled if set < 0')
+
 def maketree(path):
     try:
         os.makedirs(path)
@@ -296,7 +298,8 @@ def main(tpu_cluster=None):
 
         print('Loading dataset...')
         chunks = load_dataset(enc, args.dataset, args.combine)
-        data_sampler = Sampler(chunks)
+        seed = None if args.seed < 0 else args.seed
+        data_sampler = Sampler(chunks, seed=seed)
         if args.val_every > 0:
             val_chunks = load_dataset(enc, args.val_dataset, args.combine) if args.val_dataset else chunks
         print('dataset has', data_sampler.total_size, 'tokens')
