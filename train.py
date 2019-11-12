@@ -431,7 +431,7 @@ def main(tpu_cluster=None):
                         avg=avg_loss[0] / avg_loss[1]))
                 prev_time = now
 
-                counter += args.batch_size
+                counter += 1
 
                 if args.debug_print_all_vars:
                     print('all variables:')
