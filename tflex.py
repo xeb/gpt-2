@@ -180,9 +180,9 @@ class Saver(object):
         strip_default_attrs=False,
         save_debug_info=False):
     if global_step is not None:
-      name = '{}-{}.hdf5'.format(save_path, global_step)
+      name = '%s-%05d.hdf5' % (save_path, global_step)
     else:
-      name = '{}.hdf5'.format(save_path)
+      name = '%s.hdf5' % save_path
     save_variables(name, session=sess, var_list=self.var_list)
     self.checkpoints.append(name)
     if self.max_to_keep > 0:
