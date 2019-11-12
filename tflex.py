@@ -190,8 +190,11 @@ class Saver(object):
         fname = self.checkpoints[0]
         if fname != name:
           print('Truncating %s' % fname)
-          with open(fname, "wb") as f:
-            pass
+          try:
+            with open(fname, "wb") as f:
+              pass
+          except:
+            print('Failed to truncate %s' % fname)
         self.checkpoints = self.checkpoints[1:]
 
     
