@@ -107,7 +107,7 @@ parser.add_argument('--disable_layout_optimizer', default=False, action='store_t
 
 parser.add_argument('--debug_before_training', default=False, action='store_true', help="Drop into debugger before starting the training loop")
 
-parser.add_argument('--dropout', type=float, default=0.1, help="Dropout value. Disabled if set <= 0")
+parser.add_argument('--dropout', type=float, default=0.0, help="Dropout value. Disabled if set <= 0.0. For training on large datasets, 0.1 tends to be a good value.")
 
 parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for dataset sampler. Disabled if set < 0')
 
