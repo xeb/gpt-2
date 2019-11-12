@@ -52,7 +52,8 @@ parser.add_argument('--run_name', type=str, default='run1', help='Run id. Name o
 parser.add_argument('--sample_every', metavar='N', type=int, default=100, help='Generate samples every N steps')
 parser.add_argument('--sample_length', metavar='TOKENS', type=int, default=-1, help='Sample this many tokens')
 parser.add_argument('--sample_num', metavar='N', type=int, default=1, help='Generate this many samples')
-parser.add_argument('--save_every', metavar='N', type=int, default=1000, help='Write a checkpoint every N steps')
+parser.add_argument('--save_every', metavar='N', type=int, default=-1, help='Write a checkpoint every N steps')
+parser.add_argument('--save_time', metavar='N', type=float, default=15.0, help='Write a checkpoint every N minutes')
 
 parser.add_argument('--val_dataset', metavar='PATH', type=str, default=None, help='Dataset for validation loss, defaults to --dataset.')
 parser.add_argument('--val_batch_size', metavar='SIZE', type=int, default=1, help='Batch size for validation.')
@@ -385,7 +386,9 @@ def main(tpu_cluster=None):
 
         while True:
             try:
-                if counter % args.save_every == 0:
+                if args.save_every > 0 and (counter % args.save_every == 0):
+                    save()
+                if args.save_time > 0 and ((elapsed() / 60.0) >= args.save_time):
                     save()
                 if counter % args.sample_every == 0:
                     generate_samples()
