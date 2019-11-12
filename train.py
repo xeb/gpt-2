@@ -383,10 +383,13 @@ def main(tpu_cluster=None):
             import pdb
             pdb.set_trace()
 
+        last_saved_time = elapsed()
         while True:
             try:
-                if args.save_time > 0 and ((elapsed() / 60.0) >= args.save_time):
+                now = elapsed()
+                if args.save_time > 0 and (((now - last_saved_time) / 60.0) >= args.save_time):
                     save()
+                    last_saved_time = now
                 elif args.save_every > 0 and (counter % args.save_every == 0):
                     save()
                 if counter % args.sample_every == 0:
