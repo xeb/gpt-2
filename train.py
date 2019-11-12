@@ -25,6 +25,9 @@ import re
 import tflex
 import tflex_sgdr
 
+import pytz
+from datetime import datetime, timezone
+
 CHECKPOINT_DIR = 'checkpoint'
 SAMPLE_DIR = 'samples'
 
@@ -110,6 +113,15 @@ parser.add_argument('--debug_before_training', default=False, action='store_true
 parser.add_argument('--dropout', type=float, default=0.0, help="Dropout value. Disabled if set <= 0.0. For training on large datasets, 0.1 tends to be a good value.")
 
 parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for dataset sampler. Disabled if set < 0')
+
+PST = pytz.timezone('US/Pacific')
+
+def timestamp(now=None, tz=None):
+    if now is None:
+        now = datetime.now(timezone.utc)
+    if tz is None:
+        tz = PST
+    return "{}".format(now.astimezone(tz).isoformat())
 
 def maketree(path):
     try:
@@ -368,8 +380,9 @@ def main(tpu_cluster=None):
             summary_log.add_summary(v_summary, counter)
             summary_log.flush()
             print(
-                '[{counter} | {time:2.4f}] validation loss = {loss:2.4f}'
+                '{stamp} [{counter} | {time:2.4f}] validation loss = {loss:2.4f}'
                 .format(
+                    stamp=timestamp(),
                     counter=counter,
                     time=time.time() - start_time,
                     loss=v_val_loss))
@@ -380,7 +393,7 @@ def main(tpu_cluster=None):
             return time.time() - start_time
 
         def say(msg):
-            print('[{counter} | {time:2.4f}] {msg}'.format(counter=counter, time=elapsed(), msg=msg))
+            print('{stamp} [{counter} | {time:2.4f}] {msg}'.format(counter=counter, time=elapsed(), msg=msg, stamp=timestamp()))
 
         def sample_batch():
             #return [data_sampler.sample(hparams.n_ctx) for _ in range(args.batch_size)]
@@ -446,8 +459,9 @@ def main(tpu_cluster=None):
                             avg_loss[1] * 0.99 + 1.0)
 
                 now = time.time()
-                print('[{counter} | {time:2.4f} | {delta:2.2f} | {ops:2.6f}/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.6f} step={step}'
+                print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f} | {ops:2.6f}/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.6f} step={step}'
                     .format(
+                        stamp=timestamp(),
                         counter=counter,
                         time=now - start_time,
                         delta=now - prev_time,
