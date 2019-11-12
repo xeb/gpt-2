@@ -302,7 +302,7 @@ def main(tpu_cluster=None):
         data_sampler = Sampler(chunks, seed=seed)
         if args.val_every > 0:
             val_chunks = load_dataset(enc, args.val_dataset, args.combine) if args.val_dataset else chunks
-        print('dataset has', data_sampler.total_size, 'tokens')
+        print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
         print('Training...')
 
         if args.val_every > 0:
