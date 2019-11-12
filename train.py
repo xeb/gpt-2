@@ -385,9 +385,9 @@ def main(tpu_cluster=None):
 
         while True:
             try:
-                if args.save_every > 0 and (counter % args.save_every == 0):
-                    save()
                 if args.save_time > 0 and ((elapsed() / 60.0) >= args.save_time):
+                    save()
+                elif args.save_every > 0 and (counter % args.save_every == 0):
                     save()
                 if counter % args.sample_every == 0:
                     generate_samples()
