@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 
+import os
+import sys
+sys.path += [os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src')]
+
 import fire
 import json
 import os
 import numpy as np
 import tensorflow as tf
+import tflex
 
 import model, sample, encoder
 
@@ -63,8 +68,8 @@ def interact_model(
             temperature=temperature, top_k=top_k, top_p=top_p
         )
 
-        saver = tf.train.Saver()
-        ckpt = tf.train.latest_checkpoint(os.path.join('models', model_name))
+        saver = tflex.Saver()
+        ckpt = tflex.latest_checkpoint(os.path.join('models', model_name))
         saver.restore(sess, ckpt)
 
         while True:

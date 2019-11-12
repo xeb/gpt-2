@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # Usage:
 #  PYTHONPATH=src ./train --dataset <file|directory|glob>
+import os
+import sys
+sys.path += [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')]
 
 import argparse
 import json
-import os
 import numpy as np
 import tensorflow as tf
 import time
@@ -20,6 +22,7 @@ from accumulate import AccumulatingOptimizer
 import memory_saving_gradients
 from glob import glob
 import re
+import tflex
 
 CHECKPOINT_DIR = 'checkpoint'
 SAMPLE_DIR = 'samples'
@@ -246,24 +249,30 @@ def main(tpu_cluster=None):
         summary_log = tf.summary.FileWriter(
             os.path.join(CHECKPOINT_DIR, args.run_name))
 
-        saver = tf.train.Saver(
+        saver = tflex.Saver(
             var_list=all_vars,
             max_to_keep=5,
             keep_checkpoint_every_n_hours=2)
         sess.run(tf.global_variables_initializer())
 
         if args.restore_from == 'latest':
-            ckpt = tf.train.latest_checkpoint(
+            ckpt = tflex.latest_checkpoint(
                 os.path.join(CHECKPOINT_DIR, args.run_name))
             if ckpt is None:
                 # Get fresh GPT weights if new run.
-                ckpt = tf.train.latest_checkpoint(
+                ckpt = tflex.latest_checkpoint(
                     os.path.join('models', args.model_name))
         elif args.restore_from == 'fresh':
-            ckpt = tf.train.latest_checkpoint(
+            ckpt = tflex.latest_checkpoint(
                 os.path.join('models', args.model_name))
         else:
-            ckpt = tf.train.latest_checkpoint(args.restore_from)
+            ckpt = tflex.latest_checkpoint(args.restore_from)
+        print('Loading snapshot %s...' % ckpt)
+        t0 = time.time()
+        if not args.fresh_model:
+            saver.restore(sess, ckpt)
+        t1 = time.time()
+        print('Loaded in %f seconds' % (t1 - t0))
 
         print('Loading dataset...')
         chunks = load_dataset(enc, args.dataset, args.combine)
@@ -288,139 +297,19 @@ def main(tpu_cluster=None):
             with open(counter_path, 'r') as fp:
                 counter = int(fp.read()) + 1
 
-        def load_tpu(ctr=None, base=None, session=None):
-            if base is None:
-                base = os.path.join(CHECKPOINT_DIR, args.run_name)
-            if ctr is None:
-                ctrs = np.array([[int(y) for y in re.findall(r'model-([0-9]+)(?:-[0-9]+)?[.]npy', x)] for x in glob(os.path.join(base, 'model-*.npy'))]).flatten()
-                if len(ctrs) <= 0:
-                    return counter, False
-                ctr = ctrs.max()
-            for out in sorted(glob(os.path.join(base, 'model-{}*.npy').format(ctr))):
-                print('Loading', out)
-                xs = np.load(out, allow_pickle=True)
-                variables = []
-                values = []
-                for k, v in tqdm.tqdm(xs):
-                    vs = tf.trainable_variables()
-                    loaded = False
-                    for x in vs:
-                        if x.name == k:
-                            print('Loading', k, v.shape, x.dtype)
-                            variables += [x]
-                            values += [v]
-                            loaded = True
-                    if not loaded:
-                        print('Warning: variable {} was not loaded'.format(k))
-                t0 = time.time()
-                ops = [tf.assign(lhs, rhs) for lhs, rhs in zip(variables, values)]
-                session.run(ops)
-                t1 = time.time()
-                print('Loaded {} variables in {} seconds'.format(len(variables), t1 - t0))
-            print('Setting counter {} (was {})'.format(ctr + 1, counter))
-            return ctr + 1, True
-
-        def truncate_value(variable, value):
-            shape = variable.shape.as_list()
-            params = np.prod(shape)
-            params2 = np.prod(value.shape)
-            if params == params2:
-                return value
-            print('Truncating {} from shape {} to shape {}'.format(variable.name, value.shape, shape))
-            value = value.reshape([-1])
-            value = value[0:params]
-            value = value.reshape(shape)
-            return value
-
-        def load_snapshot(ckpt, session=None):
-            session = session or tf.get_default_session()
-            reader = pywrap_tensorflow.NewCheckpointReader(ckpt)
-            m = reader.get_variable_to_shape_map()
-            vs = tf.trainable_variables()
-            param_count = 0
-            total_count = sum([np.prod(v) for k, v in m.items()])
-            for x in tqdm.tqdm(vs):
-                name = x.name.split(':')[0]
-                if name not in m:
-                    print('Warning: {} not in snapshot'.format(name))
-                else:
-                    shape = m[name]
-                    params = np.prod(m[name])
-                    param_count += params
-                    print('Loading from disk ({} params out of {})...'.format(param_count, total_count), name, shape, params, x.dtype)
-                    value = reader.get_tensor(name)
-                    if args.truncate_weights:
-                        value = truncate_value(x, value)
-                    print('Uploading to device...', name, shape, params, x.dtype)
-                    t0 = time.time()
-                    x.load(value, session)
-                    t1 = time.time()
-                    print('Uploaded in {} seconds'.format(t1 - t0))
-
-        if not args.fresh_model:
-            ok = False
-            if tpu_cluster:
-                counter, ok = load_tpu(session=sess)
-            if not ok:
-                print('Loading checkpoint', ckpt)
-                load_snapshot(ckpt, session=sess)
-
-        def save_tpu():
-            maketree(os.path.join(CHECKPOINT_DIR, args.run_name))
-            i = 0
-            vs = tf.trainable_variables()
-            seen = set()
-            out = os.path.join(CHECKPOINT_DIR, args.run_name, 'model-{}-?.npy').format(counter)
-            print('Generating', out)
-            while True:
-                out = os.path.join(CHECKPOINT_DIR, args.run_name, 'model-{}-{}.npy').format(counter, i)
-                fetched = False
-                ks = []
-                xs = []
-                vals = []
-                param_count = 0
-                for x in tqdm.tqdm(vs):
-                    name = x.name
-                    if name not in seen:
-                        shape = x.shape.as_list()
-                        params = np.prod(shape)
-                        dtype = x.dtype
-                        print('Fetching', name, shape, params, dtype)
-                        param_count += params
-                        ks += [name]
-                        xs += [x]
-                        seen.add(name)
-                        fetched = True
-                        if param_count > 320000000:
-                            break
-                if len(xs) > 0:
-                    print('Fetching a batch of variables...')
-                    values = sess.run(xs)
-                    if args.float16:
-                        values = [x.astype(np.float32) for x in values]
-                    for name, value in zip(ks, values):
-                        vals += [[name, value]]
-                if not fetched:
-                    break
-                print('Saving', out)
-                np.save(out, vals)
-                i += 1
-            print('Updating counter')
-            with open(counter_path, 'w') as fp:
-                fp.write(str(counter) + '\n')
-
         def save():
-            if tpu_cluster:
-                return save_tpu()
             maketree(os.path.join(CHECKPOINT_DIR, args.run_name))
             print(
                 'Saving',
                 os.path.join(BUCKET, CHECKPOINT_DIR, args.run_name,
                              'model-{}').format(counter))
+            t0 = time.time()
             saver.save(
                 sess,
                 os.path.join(BUCKET, CHECKPOINT_DIR, args.run_name, 'model'),
                 global_step=counter)
+            t1 = time.time()
+            print('Saved in %f seconds' % (t1 - t0))
             with open(counter_path, 'w') as fp:
                 fp.write(str(counter) + '\n')
 
