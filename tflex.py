@@ -119,7 +119,7 @@ def save_variables(ckpt, session=None, var_list=None):
             dtype = variable.dtype
             dset = f.create_dataset(name, shape, dtype=np.float32)
             dset[:] = value
-      print('Writing snapshot...')
+      print('Writing snapshot %s' % ckpt)
       maketree(os.path.dirname(ckpt))
       shutil.copyfile(fname, ckpt+'.tmp')
       os.rename(ckpt+'.tmp', ckpt)
