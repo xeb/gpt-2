@@ -115,6 +115,8 @@ parser.add_argument('--dropout', type=float, default=0.0, help="Dropout value. D
 
 parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for dataset sampler. Disabled if set < 0')
 
+parser.add_argument('--save_graph', default=False, action='store_true', help="Save TensorFlow graph to summary log (to see ops in tensorboard)")
+
 PST = pytz.timezone('US/Pacific')
 
 def timestamp(now=None, tz=None):
@@ -282,6 +284,9 @@ def main(tpu_cluster=None):
 
         summary_log = tf.summary.FileWriter(
             os.path.join(CHECKPOINT_DIR, args.run_name))
+
+        if args.save_graph:
+            summary_log.add_graph(tf.get_default_graph())
 
         saver = tflex.Saver(
             var_list=all_vars,
