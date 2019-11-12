@@ -179,8 +179,9 @@ class Saver(object):
     if self.max_to_keep > 0:
       while len(self.checkpoints) > self.max_to_keep:
         fname = self.checkpoints[0]
-        with open(fname, "w") as f:
-          pass
+        if fname != name:
+          with open(fname, "w") as f:
+            pass
         self.checkpoints = self.checkpoints[1:]
 
     
