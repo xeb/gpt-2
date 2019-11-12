@@ -121,7 +121,8 @@ def save_variables(ckpt, session=None, var_list=None):
             dset[:] = value
       print('Writing snapshot...')
       maketree(os.path.dirname(ckpt))
-      shutil.copyfile(fname, ckpt)
+      shutil.copyfile(fname, ckpt+'.tmp')
+      os.rename(ckpt+'.tmp', ckpt)
 
 class Saver(object):
   def __init__(
