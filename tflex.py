@@ -148,6 +148,7 @@ class Saver(object):
     self.pad_step_number = pad_step_number
     self.save_relative_paths = save_relative_paths
     self.filename = filename
+    self.checkpoints = []
 
   def restore(self, sess, save_path):
     if save_path.endswith('.ckpt'):
@@ -174,5 +175,12 @@ class Saver(object):
     else:
       name = '{}.hdf5'.format(save_path)
     save_variables(name, session=sess, var_list=self.var_list)
+    self.checkpoints.append(name)
+    if self.max_to_keep > 0:
+      while len(self.checkpoints) > self.max_to_keep:
+        fname = self.checkpoints[0]
+        with open(fname, "w") as f:
+          pass
+        self.checkpoints = self.checkpoints[1:]
 
     
