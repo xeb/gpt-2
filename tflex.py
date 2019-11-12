@@ -108,21 +108,19 @@ def maketree(path):
 def save_variables(ckpt, session=None, var_list=None):
     session = session or tf.get_default_session()
     vs = var_list or tf.trainable_variables()
-    with tempfile.TemporaryDirectory() as base:
-      fname = os.path.join(base, 'model.hdf5')
-      with h5py.File(fname, "w") as f:
-        for variables in tqdm.tqdm(list(split_by_params(vs))):
-          values = session.run(variables)
-          for value, variable in zip(values, variables):
-            name = variable.name
-            shape = variable.shape.as_list()
-            dtype = variable.dtype
-            dset = f.create_dataset(name, shape, dtype=np.float32)
-            dset[:] = value
-      print('Writing snapshot %s' % ckpt)
-      maketree(os.path.dirname(ckpt))
-      shutil.copyfile(fname, ckpt+'.tmp')
-      os.rename(ckpt+'.tmp', ckpt)
+    maketree(os.path.dirname(ckpt))
+    fname = ckpt+'.tmp'
+    with h5py.File(fname, "w") as f:
+      for variables in tqdm.tqdm(list(split_by_params(vs))):
+        values = session.run(variables)
+        for value, variable in zip(values, variables):
+          name = variable.name
+          shape = variable.shape.as_list()
+          dtype = variable.dtype
+          dset = f.create_dataset(name, shape, dtype=np.float32)
+          dset[:] = value
+    print('Writing snapshot %s' % ckpt)
+    os.rename(ckpt+'.tmp', ckpt)
 
 class Saver(object):
   def __init__(
