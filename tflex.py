@@ -162,7 +162,7 @@ class Saver(object):
       load_snapshot(save_path, session=sess, var_list=self.var_list, reshape=self.reshape)
     elif save_path.endswith('.hdf5'):
       load_variables(save_path, session=sess, var_list=self.var_list, reshape=self.reshape)
-    elif os.path.exists(save_path + '.npy'):
+    elif os.path.exists(save_path + '.npy') or os.path.exists(save_path + '-0.npy'):
       load_weights(save_path, session=sess, var_list=self.var_list, reshape=self.reshape)
     elif os.path.exists(save_path + '.hdf5'):
       load_variables(save_path + '.hdf5', session=sess, var_list=self.var_list, reshape=self.reshape)
