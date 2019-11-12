@@ -102,6 +102,8 @@ parser.add_argument('--disable_layout_optimizer', default=False, action='store_t
 
 parser.add_argument('--debug_before_training', default=False, action='store_true', help="Drop into debugger before starting the training loop")
 
+parser.add_argument('--dropout', type=float, default=0.1, help="Dropout value. Disabled if set <= 0")
+
 def maketree(path):
     try:
         os.makedirs(path)
@@ -122,6 +124,8 @@ def main(tpu_cluster=None):
     args = parser.parse_args()
     enc = encoder.get_encoder(args.model_name)
     hparams = model.default_hparams()
+    hparams.res_dropout = args.dropout
+    hparams.attn_dropout = args.dropout
     epsilon = -1e10
     if args.dtype == 'float32':
         hparams.dtype = tf.float32

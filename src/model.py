@@ -9,6 +9,8 @@ def default_hparams():
         n_embd=768,
         n_head=12,
         n_layer=12,
+        res_dropout=0.1,
+        attn_dropout=0.1,
         dtype=tf.float32
     )
 
@@ -107,6 +109,7 @@ def attn(x, scope, n_state, *, past, hparams):
 
         w = mask_attn_weights(w)
         w = softmax(w)
+        w = dropout(w, hparams.attn_dropout)
         a = tf.matmul(w, v)
         return a
 
@@ -122,6 +125,7 @@ def attn(x, scope, n_state, *, past, hparams):
         a = multihead_attn(q, k, v)
         a = merge_heads(a)
         a = conv1d(a, 'c_proj', n_state, hparams=hparams)
+        a = dropout(a, hparams.res_dropout)
         return a, present
 
 
@@ -131,8 +135,13 @@ def mlp(x, scope, n_state, *, hparams):
         nx = x.shape[-1].value
         h = gelu(conv1d(x, 'c_fc', n_state, hparams=hparams))
         h2 = conv1d(h, 'c_proj', nx, hparams=hparams)
+        h2 = dropout(h2, hparams.res_dropout)
         return h2
 
+def dropout(x, pdrop=0.1, train=True):
+    if train and pdrop > 0:
+        x = tf.nn.dropout(x, rate=pdrop)
+    return x
 
 def block(x, scope, *, past, hparams):
     dtype = hparams.dtype if hparams else tf.float32
