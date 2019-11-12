@@ -268,7 +268,8 @@ def main(tpu_cluster=None):
         saver = tflex.Saver(
             var_list=all_vars,
             max_to_keep=args.max_to_keep,
-            keep_checkpoint_every_n_hours=2)
+            keep_checkpoint_every_n_hours=2,
+            reshape=args.truncate_weights)
         sess.run(tf.global_variables_initializer())
 
         if args.restore_from == 'latest':

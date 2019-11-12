@@ -32,13 +32,16 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   ctr = ctrs.max()
   return os.path.join(checkpoint_dir, 'model-{}').format(ctr)
 
-def truncate_value(variable, value):
+def truncate_value(variable, value, reshape=True):
+  if not reshape:
+    return value
   shape = variable.shape.as_list()
   params = np.prod(shape)
   params2 = np.prod(value.shape)
   if params == params2:
     return value
   print('Truncating {} from shape {} to shape {}'.format(variable.name, value.shape, shape))
+  value = np.array(value)
   value = value.reshape([-1])
   value = value[0:params]
   value = value.reshape(shape)
@@ -48,8 +51,7 @@ def grab_values(variables, reader, reshape=False):
   for variable in variables:
     name = variable.name.split(':')[0]
     value = reader.get_tensor(name)
-    if reshape:
-      value = truncate_value(variable, value)
+    value = truncate_value(variable, value, reshape=reshape)
     yield variable, value
 
 def assign_values(variables, values, session=None):
@@ -87,8 +89,7 @@ def load_weights(ckpt, session=None, var_list=None, reshape=False):
       if variable is None:
         print('Warning: variable %s not loaded' % name)
       else:
-        if reshape:
-          value = truncate_value(variable, value)
+        value = truncate_value(variable, value, reshape=reshape)
         variable.load(value, session)
 
 def load_variables(ckpt, session=None, var_list=None, reshape=False):
@@ -96,7 +97,7 @@ def load_variables(ckpt, session=None, var_list=None, reshape=False):
   vs = var_list or tf.trainable_variables()
   with h5py.File(ckpt) as f:
     for variables in tqdm.tqdm(list(split_by_params(vs))):
-      values = [f[x.name] for x in variables]
+      values = [truncate_value(x, f[x.name], reshape=reshape)  for x in variables]
       assign_values(variables, values, session=session)
 
 def maketree(path):
