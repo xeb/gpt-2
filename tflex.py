@@ -97,18 +97,23 @@ def load_variables(ckpt, session=None, var_list=None, reshape=False):
       values = [f[x.name] for x in variables]
       assign_values(variables, values, session=session)
 
+import tempfile
+
 def save_variables(ckpt, session=None, var_list=None):
     session = session or tf.get_default_session()
     vs = var_list or tf.trainable_variables()
-    with h5py.File(ckpt, "w") as f:
-      for variables in tqdm.tqdm(list(split_by_params(vs))):
-        values = session.run(variables)
-        for value, variable in zip(values, variables):
-          name = variable.name
-          shape = variable.shape.as_list()
-          dtype = variable.dtype
-          dset = f.create_dataset(name, shape, dtype=np.float32)
-          dset[:] = value
+    with tempfile.TemporaryDirectory() as base:
+      fname = os.path.join(base, 'model.hdf5')
+      with h5py.File(fname, "w") as f:
+        for variables in tqdm.tqdm(list(split_by_params(vs))):
+          values = session.run(variables)
+          for value, variable in zip(values, variables):
+            name = variable.name
+            shape = variable.shape.as_list()
+            dtype = variable.dtype
+            dset = f.create_dataset(name, shape, dtype=np.float32)
+            dset[:] = value
+      os.rename(fname, ckpt)
 
 class Saver(object):
   def __init__(
