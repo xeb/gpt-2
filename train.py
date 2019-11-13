@@ -101,6 +101,8 @@ parser.add_argument('--n_embd', type=int, default=-1, help='For a fresh model, h
 parser.add_argument('--n_head', type=int, default=-1, help='For a fresh model, how large should n_head be?')
 parser.add_argument('--n_layer', type=int, default=-1, help='For a fresh model, how large should n_layer be?')
 
+parser.add_argument('--sample_ctx', type=int, default=-1, help='Compute loss over N samples. Equal to n_ctx if set < 0.')
+
 parser.add_argument('--truncate_weights', default=False, action='store_true', help="Try loading variables from snapshots, even if those variables' shapes do not match")
 
 parser.add_argument('--debug_print_all_vars', default=False, action='store_true', help="Print all variables after running one training step")
@@ -179,6 +181,8 @@ def main(tpu_cluster=None):
     if args.sample_length > hparams.n_ctx:
         raise ValueError(
             "Can't get samples longer than window size: %s" % hparams.n_ctx)
+    if args.sample_ctx < 0:
+      args.sample_ctx = hparams.n_ctx
 
     if args.model_name == '345M':
         args.memory_saving_gradients = True
@@ -402,13 +406,13 @@ def main(tpu_cluster=None):
             print('{stamp} [{counter} | {time:2.4f}] {msg}'.format(counter=counter, time=elapsed(), msg=msg, stamp=timestamp()))
 
         def sample_batch():
-            #return [data_sampler.sample(hparams.n_ctx) for _ in range(args.batch_size)]
+            #return [data_sampler.sample(args.sample_ctx) for _ in range(args.batch_size)]
             #say('Sampling batch...')
             r = []
             times = []
             for _ in range(args.batch_size):
                 start = time.time()
-                sample = data_sampler.sample(hparams.n_ctx)
+                sample = data_sampler.sample(args.sample_ctx)
                 end = time.time()
                 elapsed = (end - start)
                 r += [sample]
