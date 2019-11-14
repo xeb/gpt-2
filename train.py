@@ -342,6 +342,7 @@ def main(tpu_cluster=None):
             with open(counter_path, 'r') as fp:
                 counter = int(fp.read()) + 1
 
+        @tflex.register_command
         def save():
             maketree(os.path.join(CHECKPOINT_DIR, args.run_name))
             print(
@@ -358,6 +359,7 @@ def main(tpu_cluster=None):
             with open(counter_path, 'w') as fp:
                 fp.write(str(counter) + '\n')
 
+        @tflex.register_command
         def generate_samples():
             print('Generating samples...')
             context_tokens = data_sampler.sample(1)
@@ -380,7 +382,10 @@ def main(tpu_cluster=None):
                                  'samples-{}').format(counter), 'w') as fp:
                 fp.write('\n'.join(all_text))
 
+        @tflex.register_command
         def validation():
+            if args.val_every <= 0:
+              return
             print('Calculating validation loss...')
             losses = []
             for batch in tqdm.tqdm(val_batches):
@@ -480,12 +485,32 @@ def main(tpu_cluster=None):
                         avg=avg_loss[0] / avg_loss[1],
                         step=current_step,
                         ))
-                prev_time = now
 
                 counter += 1
                 current_step += 1
                 global_step.load(current_step, session=sess)
 
+                tflex.check_commands_with_args(
+                    session=sess,
+                    stamp=timestamp(),
+                    counter=counter,
+                    time=now - start_time,
+                    delta=now - prev_time,
+                    ops=args.batch_size / (now - prev_time),
+                    rate=v_rate,
+                    loss=v_loss,
+                    avg=avg_loss[0] / avg_loss[1],
+                    avg_loss=avg_loss,
+                    step=current_step,
+                    train_vars=train_vars,
+                    all_vars=all_vars,
+                    args=args,
+                    data_sampler=data_sampler,
+                    ckpt=ckpt,
+                    saver=saver,
+                    )
+
+                prev_time = now
                 if args.debug_print_all_vars:
                     print('all variables:')
                     print('name/shape/parameter_count')

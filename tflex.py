@@ -198,4 +198,167 @@ class Saver(object):
             print('Failed to truncate %s' % fname)
         self.checkpoints = self.checkpoints[1:]
 
-    
+class Commands(object):
+  def __init__(self, path='commands'):
+    self.path = path
+    self.commands = []
+    self.args = []
+    self.keys = {}
+
+  def has(self, name, **keys):
+    if 'action' in keys:
+      action = keys.pop('action')
+      for name1, action1 in self.commands:
+        if name == name1 and action1 == action:
+          return True
+    else:
+      for name1, action1 in self.commands:
+        if name == name1:
+          return True
+    return False
+
+  def add(self, name, action=None):
+    if not self.has(name=name, action=action):
+      self.commands.append((name, action))
+      full = self.full_path(name)
+      maketree(full)
+
+  def full_path(self, name):
+    return os.path.join(self.path, name)
+
+  def check(self, *args, **keys):
+    ops = []
+    seen = set()
+    for name, action in self.commands:
+      full = self.full_path(name)
+      if not os.path.isdir(full):
+        if name not in seen:
+          seen.add(name)
+          ops.append(name)
+    for op in ops:
+      self.run(op, *args, **keys)
+    return ops
+
+  def run(self, op):
+    ran = False
+    for name, action in self.commands:
+      if name == op:
+        print('Running command', name, action)
+        if not ran:
+          full = self.full_path(op)
+          maketree(full)
+          ran = True
+        if action:
+          action()
+    if not ran:
+      raise Exception('Commands.execute failed: no such command: {}'.format(op))
+  
+  def run_with_args(self, op, *args, **keys):
+    with CommandArgs(*args, **keys):
+      return self.run(op)
+
+commander = None
+
+def commands(**keys):
+  global commander
+  if commander is None:
+    commander = Commands()
+  cmds = keys.pop('commands') if 'commands' in keys else None
+  if cmds is not None:
+    for cmd in cmds:
+      action = None
+      if isinstance(cmd, str):
+        name = cmd
+      elif len(cmd) >= 2:
+        name, action = cmd
+      elif len(cmd) >= 1:
+        name = cmd[0]
+      else:
+        continue
+      commander.add(name=name, action=action)
+  return commander
+
+class CommandArgs(object):
+  def __init__(self, *args, **keys):
+    self.args = list(args)
+    self.keys = keys.copy()
+    self.cmdr = commands()
+
+  def __enter__(self):
+    self.args_prev = self.cmdr.args
+    self.keys_prev = self.cmdr.keys
+    self.cmdr.args = self.args
+    self.cmdr.keys = self.keys
+
+  def __exit__(self, *excinfo):
+    self.cmdr.args = self.args_prev
+    self.cmdr.keys = self.keys_prev
+
+def check_commands():
+  cmdr = commands()
+  return cmdr.check()
+
+def check_commands_with_args(*args, **keys):
+  cmdr = commands()
+  with CommandArgs(*args, **keys):
+    return cmdr.check()
+
+def add_command(name, action=None, **keys):
+  cmdr = commands()
+  return cmdr.add(name=name, action=action)
+
+def register_command(*args, **keys):
+  fn = args[0]
+  if isinstance(fn, str):
+    add_command(fn)
+  else:
+    name = fn.__qualname__
+    name = name.replace('.<locals>.', '_command_')
+    name = name.replace('___', '/')
+    action = fn
+    print(name, action)
+    add_command(name, action)
+  return fn
+
+def has_command(name):
+  cmdr = commands()
+  return cmdr.has(name)
+
+def run_command(command_name):
+  cmdr = commands()
+  return cmdr.run(command_name)
+
+def run_command_with_args(command_name, *args, **keys):
+  cmdr = commands()
+  return cmdr.run_with_args(command_name, *args, **keys)
+
+def command_arg(x, unset=None):
+  cmdr = commands()
+  if isinstance(x, int):
+    try:
+      return cmdr.args[x]
+    except:
+      return unset
+  else:
+    if x in cmdr.keys:
+      return cmdr.keys[x]
+    return unset
+
+def command_args():
+  cmdr = commands()
+  return cmdr.args, cmdr.keys
+
+@register_command
+def command_debug():
+  import pdb
+  pdb.set_trace()
+
+from pprint import pprint
+
+@register_command
+def command_print():
+  args, props = command_args()
+  for k, v in enumerate(args):
+    pprint(v)
+  for k, v in props.items():
+    pprint({k: v})
