@@ -468,6 +468,7 @@ def main(tpu_cluster=None):
                     v_loss = tf.to_float(v_loss).eval()
 
                 summary_log.add_summary(v_summary, counter)
+                summary_log.flush()
 
                 avg_loss = (avg_loss[0] * 0.99 + v_loss,
                             avg_loss[1] * 0.99 + 1.0)
