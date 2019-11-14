@@ -544,9 +544,6 @@ def main(tpu_cluster=None):
                     pdb.set_trace()
                 else:
                     break
-        if tpu_cluster and args.init_tpu:
-            print('Shutting down TPU system...')
-            sess.run(tpu.shutdown_system())
 
 def main_tpu():
     # Get the TPU's location
