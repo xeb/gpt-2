@@ -550,11 +550,14 @@ def main(tpu_cluster=None):
 
 def main_tpu():
     # Get the TPU's location
-    if 'COLAB_TPU_ADDR' not in os.environ:
-      tpu_cluster = None
-    else:
+    if 'COLAB_TPU_ADDR' in os.environ:
       tpu_cluster = TPUClusterResolver().get_master()
       print(tpu_cluster)
+    elif 'TPU_NAME' in os.environ:
+      tpu_cluster = TPUClusterResolver(os.environ['TPU_NAME']).get_master()
+      print(tpu_cluster)
+    else:
+      tpu_cluster = None
     #with tf.Session(tpu_cluster) as sess:
     #    sess.run(tpu.initialize_system())
     #    main()
