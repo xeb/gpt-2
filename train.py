@@ -510,6 +510,8 @@ def main(tpu_cluster=None):
                     ckpt=ckpt,
                     saver=saver,
                     )
+                if tflex.should_quit():
+                  break
 
                 prev_time = now
                 if args.debug_print_all_vars:

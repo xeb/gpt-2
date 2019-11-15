@@ -204,6 +204,7 @@ class Commands(object):
     self.commands = []
     self.args = []
     self.keys = {}
+    self.frozen = False
 
   def has(self, name, **keys):
     if 'action' in keys:
@@ -227,6 +228,8 @@ class Commands(object):
     return os.path.join(self.path, name)
 
   def check(self, *args, **keys):
+    if not self.frozen:
+      heartbeat()
     ops = []
     seen = set()
     for name, action in self.commands:
@@ -237,7 +240,6 @@ class Commands(object):
           ops.append(name)
     for op in ops:
       self.run(op, *args, **keys)
-    heartbeat()
     return ops
 
   def run(self, op):
@@ -315,6 +317,8 @@ def register_command(*args, **keys):
   else:
     name = fn.__qualname__
     name = name.replace('.<locals>.', '_command_')
+    if name.endswith('_command_save'):
+      name = 'save'
     name = name.replace('___', '/')
     action = fn
     print(name, action)
@@ -350,14 +354,14 @@ def command_args():
   return cmdr.args, cmdr.keys
 
 @register_command
-def command_debug():
+def attach_debugger():
   import pdb
   pdb.set_trace()
 
 from pprint import pprint
 
 @register_command
-def command_print():
+def print_status():
   args, props = command_args()
   for k, v in enumerate(args):
     pprint(v)
@@ -387,10 +391,46 @@ def heartbeat():
 import time
 
 @register_command
-def command_freeze_forever():
+def freeze_forever():
+  cmdr = commands()
+  if cmdr.frozen:
+    print("Already frozen.")
+    return
+  prev = cmdr.frozen
+  cmdr.frozen = True
   print('Simulating a freeze; going into an infinite loop:')
   prev=time.time()
-  while True:
-    elapsed=time.time() - prev
-    print('Frozen for {}s'.format(elapsed))
-    time.sleep(1)
+  try:
+    while not should_quit():
+      elapsed=time.time() - prev
+      print('Frozen for {}s'.format(elapsed))
+      time.sleep(1)
+      check_commands()
+  finally:
+    cmdr.frozen = prev
+
+_quit = False
+
+import sys
+
+@register_command
+def quit():
+  global _quit
+  if _quit:
+    print("Failed to quit; running sys.exit(1)")
+    sys.exit(1)
+  else:
+    print("Quitting...")
+    _quit = True
+
+def should_quit():
+  return _quit
+
+@register_command
+def save_and_quit():
+  global _quit
+  if has_command('save'):
+    print("Saving...")
+    run_command('save')
+  quit()
+
