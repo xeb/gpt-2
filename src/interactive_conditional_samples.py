@@ -102,7 +102,9 @@ def interact_model(
                     generated += 1
                     text = enc.decode(out[i])
                     print("=" * 40 + " SAMPLE " + str(generated) + " " + "=" * 40)
+                    sys.stdout.write(raw_text)
                     print(text)
+                    sys.stdout.flush()
             print("=" * 80)
 
 if __name__ == '__main__':
