@@ -23,7 +23,9 @@ def interact_model(
     length=None,
     temperature=1,
     top_k=0,
-    top_p=0.0
+    top_p=0.0,
+    prompt=None,
+    strip=False
 ):
     """
     Interactively run the model
@@ -77,10 +79,19 @@ def interact_model(
         saver.restore(sess, ckpt)
 
         while True:
-            raw_text = input("Model prompt >>> ")
-            while not raw_text:
-                print('Prompt should not be empty!')
+            if prompt is not None:
+              if os.path.isfile(prompt):
+                  with open(prompt) as f:
+                      raw_text = f.read()
+              else:
+                  raw_text = prompt
+            else:
                 raw_text = input("Model prompt >>> ")
+                if not raw_text:
+                    raw_text="\n"
+            if strip:
+                raw_text = raw_text.rstrip()
+            print('Prompt:', repr(raw_text))
             context_tokens = enc.encode(raw_text)
             generated = 0
             for _ in range(nsamples // batch_size):
