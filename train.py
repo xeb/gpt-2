@@ -247,7 +247,7 @@ def main():
               lr.load(rate, session=sess)
           return lr.eval(session=sess)
 
-        @register_command
+        @tflex.register_command
         def set_learning_rate():
           print("Current learn rate: %0.8f" % update_lr())
           print("New learn rate?")
