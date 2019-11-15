@@ -244,7 +244,7 @@ def main():
               rate = args.learning_rate
             if callable(rate):
               rate = rate(step)
-              lr.load(rate, session=sess)
+            lr.load(rate, session=sess)
           return lr.eval(session=sess)
 
         @tflex.register_command
