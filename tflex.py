@@ -9,6 +9,40 @@ import h5py
 import shutil
 import tempfile
 
+from tensorflow.contrib import tpu
+from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+
+def get_tpu_addr(tpu_name=None):
+    # Get the TPU's location
+    if tpu_name is not None:
+      return TPUClusterResolver(tpu_name).get_master()
+    if 'COLAB_TPU_ADDR' in os.environ:
+      return TPUClusterResolver().get_master()
+    elif 'TPU_NAME' in os.environ:
+      return TPUClusterResolver(os.environ['TPU_NAME']).get_master()
+
+def get_session_target(target='auto'):
+    if target == 'auto':
+      target = get_tpu_addr()
+      if target is not None:
+        print("Using TPU %s" % target)
+    return target
+
+class Session(tf.Session):
+  def __init__(self, target='auto', graph=None, config=None, init_tpu=False):
+    super.__init__(self, get_session_target(target), graph=graph, config=config)
+    self.init_tpu=init_tpu
+
+  def __enter__(self):
+    sess = super.__enter__()
+    if self.init_tpu:
+      print("Initializing TPU...")
+      sess.run(tpu.initialize_system())
+    return sess
+
+  def __exit__(self):
+    return super.__exit__()
+
 def split_by_params(vs, n=200e6, f=None):
   if f is None:
     f = lambda x: np.prod(x.shape.as_list())
