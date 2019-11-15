@@ -229,12 +229,12 @@ def main():
             global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
             current_step = args.learning_rate_initial_step
             global_step.load(current_step, session=sess)
-          if args.learning_rate_cos:
-              lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
-                  warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
-          else:
-              lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
-              lr.load(args.learning_rate, session=sess)
+            if args.learning_rate_cos:
+                lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
+                    warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
+            else:
+                lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
+                lr.load(args.learning_rate, session=sess)
 
         def update_lr(rate=None, step=None):
           if not args.learning_rate_cos:
