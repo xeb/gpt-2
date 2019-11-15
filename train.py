@@ -229,11 +229,38 @@ def main():
             global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
             current_step = args.learning_rate_initial_step
             global_step.load(current_step, session=sess)
-        if args.learning_rate_cos:
-            lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
-                warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
-        else:
-            lr = tf.constant(args.learning_rate)
+          if args.learning_rate_cos:
+              lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
+                  warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
+          else:
+              lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
+              lr.load(args.learning_rate, session=sess)
+
+        def update_lr(rate=None, step=None):
+          if not args.learning_rate_cos:
+            if step is None:
+              step = global_step.eval(session=sess)
+            if rate is None:
+              rate = args.learning_rate
+            if callable(rate):
+              rate = rate(step)
+              lr.load(rate, session=sess)
+          return lr.eval(session=sess)
+
+        @register_command
+        def set_learning_rate():
+          print("Current learn rate: %0.8f" % update_lr())
+          print("New learn rate?")
+          rate = input('')
+          if not rate:
+            print("Empty input; not changing anything.")
+          else:
+            try:
+              rate = float(rate)
+            except:
+              print("Invalid input; must be a float")
+          print("Setting learn rate to %0.8f" % rate)
+          args.learning_rate = rate
 
         if args.optimizer == 'adam':
             opt = tf.train.AdamOptimizer(learning_rate=lr)
@@ -441,6 +468,8 @@ def main():
                 if args.val_every > 0 and (counter % args.val_every == 0 or counter == 1):
                     validation()
 
+                v_rate = update_lr()
+
                 if args.accumulate_gradients > 1:
                     #say('Running opt_reset...')
                     sess.run(opt_reset)
@@ -449,12 +478,12 @@ def main():
                         say('Running opt_compute...')
                         sess.run(opt_compute, feed_dict={context: batch})
                     say('Running opt_apply...')
-                    (v_loss, v_summary, v_rate) = sess.run((opt_apply, summaries, lr))
+                    (v_loss, v_summary) = sess.run((opt_apply, summaries))
                 else:
                     batch = sample_batch()
                     say('Running opt_apply...')
-                    (_, v_loss, v_summary, v_rate) = sess.run(
-                        (opt_apply, loss, summaries, lr),
+                    (_, v_loss, v_summary_rate) = sess.run(
+                        (opt_apply, loss, summaries),
                         feed_dict={context: batch})
 
                 if args.float16:
