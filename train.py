@@ -474,13 +474,13 @@ def main(tpu_cluster=None):
                             avg_loss[1] * 0.99 + 1.0)
 
                 now = time.time()
-                print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f} | {ops:2.6f}/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.7f} step={step}'
+                print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.7f} step={step}'
                     .format(
                         stamp=timestamp(),
                         counter=counter,
                         time=now - start_time,
                         delta=now - prev_time,
-                        ops=args.batch_size / (now - prev_time),
+                        ops=args.sample_ctx * args.batch_size / (now - prev_time),
                         rate=v_rate,
                         loss=v_loss,
                         avg=avg_loss[0] / avg_loss[1],
