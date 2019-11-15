@@ -482,7 +482,7 @@ def main():
                 else:
                     batch = sample_batch()
                     say('Running opt_apply...')
-                    (_, v_loss, v_summary_rate) = sess.run(
+                    (_, v_loss, v_summary) = sess.run(
                         (opt_apply, loss, summaries),
                         feed_dict={context: batch})
 
