@@ -30,18 +30,18 @@ def get_session_target(target='auto'):
 
 class Session(tf.Session):
   def __init__(self, target='auto', graph=None, config=None, init_tpu=False):
-    super.__init__(self, get_session_target(target), graph=graph, config=config)
+    super().__init__(get_session_target(target), graph=graph, config=config)
     self.init_tpu=init_tpu
 
   def __enter__(self):
-    sess = super.__enter__()
+    sess = super().__enter__()
     if self.init_tpu:
       print("Initializing TPU...")
       sess.run(tpu.initialize_system())
     return sess
 
   def __exit__(self):
-    return super.__exit__()
+    return super().__exit__()
 
 def split_by_params(vs, n=200e6, f=None):
   if f is None:
