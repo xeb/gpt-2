@@ -129,7 +129,7 @@ def load_weights(ckpt, session=None, var_list=None, reshape=False):
 def load_variables(ckpt, session=None, var_list=None, reshape=False):
   session = session or tf.get_default_session()
   vs = var_list or tf.trainable_variables()
-  with h5py.File(ckpt) as f:
+  with h5py.File(ckpt, "r") as f:
     for variables in tqdm.tqdm(list(split_by_params(vs))):
       values = [truncate_value(x, f[x.name], reshape=reshape)  for x in variables]
       assign_values(variables, values, session=session)
