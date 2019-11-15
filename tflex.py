@@ -237,6 +237,7 @@ class Commands(object):
           ops.append(name)
     for op in ops:
       self.run(op, *args, **keys)
+    heartbeat()
     return ops
 
   def run(self, op):
@@ -362,3 +363,34 @@ def command_print():
     pprint(v)
   for k, v in props.items():
     pprint({k: v})
+
+
+#
+# return current UTC timestamp.
+#
+def utc():
+    from datetime import datetime
+    d = datetime.utcnow()
+    import calendar
+    return calendar.timegm(d.utctimetuple())
+
+def heartbeat():
+  pongfile=os.environ['PONG'] if 'PONG' in os.environ else 'pong.txt'
+  with open(pongfile, "a+") as f:
+    nonce = os.urandom(8).hex()
+    now=utc()
+    out="pid{}_time{}_nonce{}\n".format(os.getpid(), now, nonce)
+    #print("PONG! Writing {} to {}".format(out, pongfile))
+    f.write(out)
+    f.flush()
+
+import time
+
+@register_command
+def command_freeze_forever():
+  print('Simulating a freeze; going into an infinite loop:')
+  prev=time.time()
+  while True:
+    elapsed=time.time() - prev
+    print('Frozen for {}s'.format(elapsed))
+    time.sleep(1)
