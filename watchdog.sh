@@ -3,6 +3,7 @@
 
 timeout="${1:-600}"
 cmd="${2:-echo killed}"
+truncate_heartbeat_file_to_n_lines=100000
 
 #heartbeat_file="${2:-pong.txt}"
 heartbeat_file="pong.txt"
@@ -27,7 +28,7 @@ do
       then
         echo "$(date) kill -9 $pid"
         kill -9 $pid > /dev/null 2>&1
-        tail -n 100 "$heartbeat_file" | sponge "$heartbeat_file"
+        tail -n $truncate_heartbeat_file_to_n_lines "$heartbeat_file" | sponge "$heartbeat_file"
         set -x
         $cmd
         set +x
