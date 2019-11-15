@@ -12,8 +12,6 @@ import tensorflow as tf
 import time
 import tqdm
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.contrib import tpu
-from tensorflow.contrib.cluster_resolver import TPUClusterResolver
 from tensorflow.python import pywrap_tensorflow
 
 import model, sample, encoder
@@ -144,7 +142,7 @@ def randomize(context, hparams, p):
         return context
 
 
-def main(tpu_cluster=None):
+def main():
     args = parser.parse_args()
     enc = encoder.get_encoder(args.model_name)
     hparams = model.default_hparams()
@@ -194,12 +192,7 @@ def main(tpu_cluster=None):
         config.gpu_options.allow_growth = True
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
-    with tf.Session(tpu_cluster, config=config) as sess:
-        if tpu_cluster and args.init_tpu:
-            print("initializing TPU system...")
-            sess.run(tpu.initialize_system())
-        if tpu_cluster:
-            print("Using TPU %s" % tpu_cluster)
+    with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
         context = tf.placeholder(tf.int32, [args.batch_size, None])
         context_in = randomize(context, hparams, args.noise)
         output = model.model(hparams=hparams, X=context_in)
@@ -258,11 +251,11 @@ def main(tpu_cluster=None):
         else:
             exit('Bad optimizer:', args.optimizer)
         
-        if tpu_cluster:
-            # https://pulsejet.github.io/blog/posts/tpu-without-estimator/
-            from tensorflow.contrib.tpu.python.tpu import tpu_function
-            #tpu_function.get_tpu_context().set_number_of_shards(8)
-            #opt = tf.contrib.tpu.CrossShardOptimizer(opt)
+        #if tpu_addr:
+        #    # https://pulsejet.github.io/blog/posts/tpu-without-estimator/
+        #    from tensorflow.contrib.tpu.python.tpu import tpu_function
+        #    tpu_function.get_tpu_context().set_number_of_shards(8)
+        #    opt = tf.contrib.tpu.CrossShardOptimizer(opt)
 
         if args.accumulate_gradients > 1:
             if args.memory_saving_gradients:
@@ -547,21 +540,5 @@ def main(tpu_cluster=None):
                 else:
                     break
 
-def main_tpu():
-    # Get the TPU's location
-    if 'COLAB_TPU_ADDR' in os.environ:
-      tpu_cluster = TPUClusterResolver().get_master()
-      print(tpu_cluster)
-    elif 'TPU_NAME' in os.environ:
-      tpu_cluster = TPUClusterResolver(os.environ['TPU_NAME']).get_master()
-      print(tpu_cluster)
-    else:
-      tpu_cluster = None
-    #with tf.Session(tpu_cluster) as sess:
-    #    sess.run(tpu.initialize_system())
-    #    main()
-    #    sess.run(tpu.shutdown_system())
-    main(tpu_cluster=tpu_cluster)
-
 if __name__ == '__main__':
-    main_tpu()
+    main()
