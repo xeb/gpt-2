@@ -56,7 +56,8 @@ def split_by_params(vs, n=200e6, f=None):
   yield xs
 
 def latest_checkpoint(checkpoint_dir, latest_filename=None):
-  ctrs = np.array([[int(y) for y in re.findall(r'model-([0-9]+)(?:-[0-9]+)?[.](?:npy|hdf5)', x)] for x in glob(os.path.join(checkpoint_dir, 'model-*.*'))]).flatten()
+  paths = [x for x in glob(os.path.join(checkpoint_dir, 'model-*.*')) if not x.endswith(".tmp")]
+  ctrs = np.array([[int(y) for y in re.findall(r'model-([0-9]+)(?:-[0-9]+)?[.](?:npy|hdf5)', x)] for x in paths]).flatten()
   if len(ctrs) <= 0:
     ckpt = tf.train.latest_checkpoint(checkpoint_dir, latest_filename=latest_filename)
     return ckpt
