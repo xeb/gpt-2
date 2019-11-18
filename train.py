@@ -324,10 +324,6 @@ def main():
             keep_checkpoint_every_n_hours=2,
             reshape=args.truncate_weights)
         sess.run(tf.global_variables_initializer())
-        if args.profile:
-          print('This session is using profiling.')
-        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE) if args.profile else None
-        run_metadata = tf.RunMetadata() if args.profile else None
 
         if args.restore_from == 'latest':
             ckpt = tflex.latest_checkpoint(
@@ -491,7 +487,9 @@ def main():
                     (v_loss, v_summary) = sess.run((opt_apply, summaries))
                 else:
                     batch = sample_batch()
-                    say('Running opt_apply...')
+                    say('Running opt_apply with profiling...' if args.profile else 'Running opt_apply...')
+                    options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE) if args.profile else None
+                    run_metadata = tf.RunMetadata() if args.profile else None
                     (_, v_loss, v_summary) = sess.run(
                         (opt_apply, loss, summaries),
                         feed_dict={context: batch},
@@ -500,10 +498,14 @@ def main():
                     if args.profile_save_trace:
                       fetched_timeline = timeline.Timeline(run_metadata.step_stats)
                       chrome_trace = fetched_timeline.generate_chrome_trace_format()
-                      fpath = os.path.join(checkpointdir,'timeline_02_step_%d.json' % counter)
-                      print('Saving trace', fpath)
+                      fpath = os.path.join(checkpointdir,'timeline.json')
+                      say('Saving trace %s' % fpath)
                       with open(fpath, 'w') as f:
                           f.write(chrome_trace)
+                    if args.profile:
+                        say('Adding run metadata...')
+                        step = '{}/step{}'.format(self.name, counter)
+                        summary_writer.add_run_metadata(run_metadata, step, global_step=counter)
 
                 if args.float16:
                     v_loss = tf.to_float(v_loss).eval()
