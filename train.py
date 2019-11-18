@@ -13,6 +13,7 @@ import time
 import tqdm
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import timeline
 
 import model, sample, encoder
 from load_dataset import load_dataset, Sampler
@@ -118,6 +119,7 @@ parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for
 parser.add_argument('--save_graph', default=False, action='store_true', help="Save TensorFlow graph to summary log (to see ops in tensorboard)")
 parser.add_argument('--logdir_prefix', default='')
 parser.add_argument('--profile', default=False, action='store_true')
+parser.add_argument('--profile_save_trace', default=False, action='store_true')
 parser.add_argument('--verbose', default=False, action='store_true')
 
 PST = pytz.timezone('US/Pacific')
@@ -195,7 +197,7 @@ def main():
         config.gpu_options.allow_growth = True
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
-    with tflex.Session(config=config, init_tpu=args.init_tpu, profile=args.profile, verbose=args.verbose) as sess:
+    with tflex.Session(config=config, init_tpu=args.init_tpu, profile=False, verbose=args.verbose) as sess:
         context = tf.placeholder(tf.int32, [args.batch_size, None])
         context_in = randomize(context, hparams, args.noise)
         output = model.model(hparams=hparams, X=context_in)
@@ -309,8 +311,9 @@ def main():
         summary_lr = tf.summary.scalar('learning_rate', lr)
         summaries = tf.summary.merge([summary_lr, summary_loss])
 
-        summary_log = tf.summary.FileWriter(
-            os.path.join(args.logdir_prefix, CHECKPOINT_DIR, args.run_name))
+        checkpointdir = os.path.join(CHECKPOINT_DIR, args.run_name)
+        logdir = os.path.join(args.logdir_prefix, checkpointdir)
+        summary_log = tf.summary.FileWriter(logdir)
 
         if args.save_graph:
             summary_log.add_graph(tf.get_default_graph())
@@ -321,6 +324,10 @@ def main():
             keep_checkpoint_every_n_hours=2,
             reshape=args.truncate_weights)
         sess.run(tf.global_variables_initializer())
+        if args.profile:
+          print('This session is using profiling.')
+        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE) if args.profile else None
+        run_metadata = tf.RunMetadata() if args.profile else None
 
         if args.restore_from == 'latest':
             ckpt = tflex.latest_checkpoint(
@@ -487,7 +494,16 @@ def main():
                     say('Running opt_apply...')
                     (_, v_loss, v_summary) = sess.run(
                         (opt_apply, loss, summaries),
-                        feed_dict={context: batch})
+                        feed_dict={context: batch},
+                        options=options,
+                        run_metadata=run_metadata)
+                    if args.profile_save_trace:
+                      fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+                      chrome_trace = fetched_timeline.generate_chrome_trace_format()
+                      fpath = os.path.join(checkpointdir,'timeline_02_step_%d.json' % i)
+                      print('Saving trace', fpath)
+                      with open(fpath, 'w') as f:
+                          f.write(chrome_trace)
 
                 if args.float16:
                     v_loss = tf.to_float(v_loss).eval()
