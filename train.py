@@ -500,7 +500,7 @@ def main():
                     if args.profile_save_trace:
                       fetched_timeline = timeline.Timeline(run_metadata.step_stats)
                       chrome_trace = fetched_timeline.generate_chrome_trace_format()
-                      fpath = os.path.join(checkpointdir,'timeline_02_step_%d.json' % i)
+                      fpath = os.path.join(checkpointdir,'timeline_02_step_%d.json' % counter)
                       print('Saving trace', fpath)
                       with open(fpath, 'w') as f:
                           f.write(chrome_trace)
