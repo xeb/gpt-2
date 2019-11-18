@@ -55,7 +55,13 @@ class Session(tf.Session):
     if 'run_metadata' not in kws:
       kws['run_metadata'] = self.options
     if self.verbose:
-      pprint(['Session.run', *args, list(kws.items())])
+      print('------')
+      print('Session.run')
+      for arg in args:
+        pprint(arg)
+      for k, v in kws.items():
+        print(k, ':')
+        pprint(v)
     return super().run(*args, **kws)
 
 def split_by_params(vs, n=200e6, f=None):
