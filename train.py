@@ -504,7 +504,7 @@ def main():
                           f.write(chrome_trace)
                     if args.profile:
                         say('Adding run metadata...')
-                        step = '{}/step{}'.format(self.name, counter)
+                        step = '{}/step{}'.format(args.run_name, counter)
                         summary_writer.add_run_metadata(run_metadata, step, global_step=counter)
 
                 if args.float16:
