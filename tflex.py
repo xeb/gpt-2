@@ -50,15 +50,13 @@ class Session(tf.Session):
     return sess
 
   def run(self, *args, **kws):
-    options = self.options
-    run_metadata = self.run_metadata
-    if 'options' in kws:
-      options = kws.pop('options')
-    if 'run_metadata' in kws:
-      options = kws.pop('run_metadata')
+    if 'options' not in kws:
+      kws['options'] = self.options
+    if 'run_metadata' not in kws:
+      kws['run_metadata'] = self.options
     if self.verbose:
-      pprint('Session.run', *args, options=options, run_metadata=run_metadata, **kws)
-    return super().run(*args, options=options, run_metadata=run_metadata, **kws)
+      pprint('Session.run', *args, **kws)
+    return super().run(*args, **kws)
 
 def split_by_params(vs, n=200e6, f=None):
   if f is None:
