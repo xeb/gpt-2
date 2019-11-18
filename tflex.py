@@ -17,9 +17,11 @@ def get_tpu_addr(tpu_name=None):
     # Get the TPU's location
     if tpu_name is not None:
       return TPUClusterResolver(tpu_name).get_master()
+    if 'TPU_ADDR' in os.environ:
+      return os.environ['TPU_ADDR']
     if 'COLAB_TPU_ADDR' in os.environ:
       return TPUClusterResolver().get_master()
-    elif 'TPU_NAME' in os.environ:
+    if 'TPU_NAME' in os.environ:
       return TPUClusterResolver(os.environ['TPU_NAME']).get_master()
 
 def get_session_target(target='auto'):
