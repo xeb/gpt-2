@@ -116,6 +116,8 @@ parser.add_argument('--dropout', type=float, default=0.0, help="Dropout value. D
 parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for dataset sampler. Disabled if set < 0')
 
 parser.add_argument('--save_graph', default=False, action='store_true', help="Save TensorFlow graph to summary log (to see ops in tensorboard)")
+parser.add_argument('--logdir_prefix' default='')
+parser.add_argument('--profile', defualt=False, action='store_true')
 
 PST = pytz.timezone('US/Pacific')
 
@@ -192,7 +194,7 @@ def main():
         config.gpu_options.allow_growth = True
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
-    with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
+    with tflex.Session(config=config, init_tpu=args.init_tpu, profile=args.profile) as sess:
         context = tf.placeholder(tf.int32, [args.batch_size, None])
         context_in = randomize(context, hparams, args.noise)
         output = model.model(hparams=hparams, X=context_in)
@@ -307,7 +309,7 @@ def main():
         summaries = tf.summary.merge([summary_lr, summary_loss])
 
         summary_log = tf.summary.FileWriter(
-            os.path.join(CHECKPOINT_DIR, args.run_name))
+            os.path.join(args.logdir_prefix, CHECKPOINT_DIR, args.run_name))
 
         if args.save_graph:
             summary_log.add_graph(tf.get_default_graph())

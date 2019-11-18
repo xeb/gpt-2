@@ -29,9 +29,12 @@ def get_session_target(target='auto'):
     return target
 
 class Session(tf.Session):
-  def __init__(self, target='auto', graph=None, config=None, init_tpu=False):
+  def __init__(self, target='auto', graph=None, config=None, init_tpu=False, profile=False):
     super().__init__(get_session_target(target), graph=graph, config=config)
-    self.init_tpu=init_tpu
+    self.init_tpu = init_tpu
+    self.profile = profile
+    self.options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE) if self.profile else None
+    self.run_metadata = tf.RunMetadata() if self.profile else None
 
   def __enter__(self):
     sess = super().__enter__()
@@ -39,6 +42,15 @@ class Session(tf.Session):
       print("Initializing TPU...")
       sess.run(tpu.initialize_system())
     return sess
+
+  def run(self, *args, **kws):
+    options = self.options
+    run_metadata = self.run_metadata
+    if 'options' in kws:
+      options = kws.pop('options')
+    if 'run_metadata' in kws:
+      options = kws.pop('run_metadata')
+    return super().run(*args, options=options, run_metadata=run_metadata, **kws)
 
 def split_by_params(vs, n=200e6, f=None):
   if f is None:
