@@ -195,7 +195,7 @@ def main():
         config.gpu_options.allow_growth = True
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
-    with tflex.Session(config=config, init_tpu=args.init_tpu, profile=args.profile, verbose=verbose) as sess:
+    with tflex.Session(config=config, init_tpu=args.init_tpu, profile=args.profile, verbose=args.verbose) as sess:
         context = tf.placeholder(tf.int32, [args.batch_size, None])
         context_in = randomize(context, hparams, args.noise)
         output = model.model(hparams=hparams, X=context_in)
