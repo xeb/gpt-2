@@ -116,8 +116,8 @@ parser.add_argument('--dropout', type=float, default=0.0, help="Dropout value. D
 parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for dataset sampler. Disabled if set < 0')
 
 parser.add_argument('--save_graph', default=False, action='store_true', help="Save TensorFlow graph to summary log (to see ops in tensorboard)")
-parser.add_argument('--logdir_prefix' default='')
-parser.add_argument('--profile', defualt=False, action='store_true')
+parser.add_argument('--logdir_prefix', default='')
+parser.add_argument('--profile', default=False, action='store_true')
 
 PST = pytz.timezone('US/Pacific')
 
