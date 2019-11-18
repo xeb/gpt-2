@@ -118,6 +118,7 @@ parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for
 parser.add_argument('--save_graph', default=False, action='store_true', help="Save TensorFlow graph to summary log (to see ops in tensorboard)")
 parser.add_argument('--logdir_prefix', default='')
 parser.add_argument('--profile', default=False, action='store_true')
+parser.add_argument('--verbose', default=False, action='store_true')
 
 PST = pytz.timezone('US/Pacific')
 
@@ -194,7 +195,7 @@ def main():
         config.gpu_options.allow_growth = True
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
-    with tflex.Session(config=config, init_tpu=args.init_tpu, profile=args.profile) as sess:
+    with tflex.Session(config=config, init_tpu=args.init_tpu, profile=args.profile, verbose=verbose) as sess:
         context = tf.placeholder(tf.int32, [args.batch_size, None])
         context_in = randomize(context, hparams, args.noise)
         output = model.model(hparams=hparams, X=context_in)

@@ -11,6 +11,7 @@ import tempfile
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+from pprint import pprint
 
 def get_tpu_addr(tpu_name=None):
     # Get the TPU's location
@@ -29,18 +30,23 @@ def get_session_target(target='auto'):
     return target
 
 class Session(tf.Session):
-  def __init__(self, target='auto', graph=None, config=None, init_tpu=False, profile=False):
+  def __init__(self, target='auto', graph=None, config=None, init_tpu=False, profile=False, verbose=False):
     super().__init__(get_session_target(target), graph=graph, config=config)
     self.init_tpu = init_tpu
     self.profile = profile
-    self.options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE) if self.profile else None
-    self.run_metadata = tf.RunMetadata() if self.profile else None
+    self.verbose = verbose
+    self.options = None
+    self.run_metadata = None
 
   def __enter__(self):
     sess = super().__enter__()
     if self.init_tpu:
       print("Initializing TPU...")
       sess.run(tpu.initialize_system())
+    if self.profile:
+      print('Session is using profiling')
+      self.options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      self.run_metadata = tf.RunMetadata()
     return sess
 
   def run(self, *args, **kws):
@@ -50,6 +56,8 @@ class Session(tf.Session):
       options = kws.pop('options')
     if 'run_metadata' in kws:
       options = kws.pop('run_metadata')
+    if self.verbose:
+      pprint('Session.run', *args, options=options, run_metadata=run_metadata, **kws)
     return super().run(*args, options=options, run_metadata=run_metadata, **kws)
 
 def split_by_params(vs, n=200e6, f=None):
