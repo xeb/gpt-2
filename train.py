@@ -505,7 +505,7 @@ def main():
                     if args.profile:
                         say('Adding run metadata...')
                         step = '{}/step{}'.format(args.run_name, counter)
-                        summary_writer.add_run_metadata(run_metadata, step, global_step=counter)
+                        summary_log.add_run_metadata(run_metadata, step, global_step=counter)
 
                 if args.float16:
                     v_loss = tf.to_float(v_loss).eval()
