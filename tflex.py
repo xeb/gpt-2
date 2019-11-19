@@ -155,7 +155,7 @@ def load_variables(ckpt, session=None, var_list=None, reshape=False):
   vs = var_list or tf.trainable_variables()
   with h5py.File(ckpt, "r") as f:
     for variables in tqdm.tqdm(list(split_by_params(vs))):
-      values = [truncate_value(x, f[x.name], reshape=reshape)  for x in variables]
+      values = [truncate_value(x, f[x.name], reshape=reshape) for x in variables if x.name in f]
       assign_values(variables, values, session=session)
 
 def maketree(path):
