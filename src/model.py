@@ -14,6 +14,19 @@ def default_hparams():
         dtype=tf.float32
     )
 
+_cores = None
+
+def get_core(i, session=None):
+  global _cores
+  if session is None:
+    session = tf.get_default_session()
+  if _cores is None:
+    _cores = session.list_devices()[2:]
+  n = len(_cores)
+  if n <= 0:
+    return None
+  return _cores[i % n].name
+
 import os
 
 def get_variable(name):
@@ -73,7 +86,8 @@ def conv1d(x, scope, nf, *, w_init_stdev=0.02, hparams=None):
           rhs_n = tf.split(rhs, 8, axis=0)
           ops = []
           for i in range(8):
-            ops.append(tf.matmul(lhs_n[i], rhs_n[i]))
+            with tf.device(get_core(i)):
+              ops.append(tf.matmul(lhs_n[i], rhs_n[i]))
           W = tf.reduce_sum(ops, axis=0)
         else:
           W = tf.matmul(lhs, rhs)
