@@ -338,25 +338,27 @@ def main():
         t1 = time.time()
         print('Loaded in %f seconds' % (t1 - t0))
 
+        def make_sampler(dataset, enc, seed, combine):
+          if os.path.isdir(dataset) or dataset.endswith('.npz'):
+            chunks = load_dataset(enc, dataset, combine)
+            data_sampler = Sampler(chunks, seed=seed)
+            print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
+          else:
+            data_sampler = TextSampler(dataset, enc, seed=seed)
+          return data_sampler
+
         print('Loading dataset...')
         seed = None if args.seed < 0 else args.seed
-        if os.path.isdir(args.dataset) or args.dataset.endswith('.npz'):
-          chunks = load_dataset(enc, args.dataset, args.combine)
-          data_sampler = Sampler(chunks, seed=seed)
-          print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
-        else:
-          data_sampler = TextSampler(args.dataset, enc, seed=seed)
-        if args.val_every > 0:
-            val_chunks = load_dataset(enc, args.val_dataset, args.combine) if args.val_dataset else chunks
-        print('Training...')
-
+        data_sampler = make_sampler(dataset=args.dataset, enc=enc, seed=seed, combine=args.combine)
         if args.val_every > 0:
             # Sample from validation set once with fixed seed to make
             # it deterministic during training as well as across runs.
-            val_data_sampler = Sampler(val_chunks, seed=1)
+            val_dataset = args.val_dataset if args.val_dataset else args.dataset
+            val_data_sampler = make_sampler(dataset=val_dataset, enc=enc, seed=1, combine=args.combine)
             val_batches = [[val_data_sampler.sample(hparams.n_ctx) for _ in range(args.val_batch_size)]
                            for _ in range(args.val_batch_count)]
 
+        print('Training...')
         counter = 1
         counter_path = os.path.join(CHECKPOINT_DIR, args.run_name, 'counter')
         if os.path.exists(counter_path):
