@@ -212,9 +212,9 @@ class TrainGPT2(object):
         with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
           global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
           current_step = args.learning_rate_initial_step
-          global_step.load(current_step, session=session)
+          global_step.load(current_step, session=self.sess)
           lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
-          lr.load(args.learning_rate, session=session)
+          lr.load(args.learning_rate, session=self.sess)
 
         if args.optimizer == 'adam':
           opt = tf.train.AdamOptimizer(learning_rate=lr)
@@ -250,7 +250,6 @@ class TrainGPT2(object):
         self.train_vars = train_vars
         self.opt_grads = opt_grads
         self.opt_apply = opt_apply
-        self.sess = session
         self.lr = lr
         self.current_step = current_step
         self.global_step = global_step
