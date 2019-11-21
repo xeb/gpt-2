@@ -189,6 +189,7 @@ class TrainGPT2(object):
       self.say('Initializing...')
       args = self.args
       hparams = self.hparams
+      scope = self.scope
       #with session.as_default():
         #with tf.device(core):
       if True:
