@@ -66,7 +66,20 @@ def conv1d(x, scope, nf, *, w_init_stdev=0.02, hparams=None):
         *start, nx = shape_list(x)
         w = get_variable('w') or tf.get_variable('w', [1, nx, nf], initializer=tf.random_normal_initializer(stddev=w_init_stdev, dtype=dtype))
         b = get_variable('b') or tf.get_variable('b', [nf], initializer=tf.constant_initializer(0, dtype=dtype))
-        c = tf.reshape(tf.matmul(tf.reshape(x, [-1, nx]), tf.reshape(w, [-1, nf]))+b, start+[nf])
+        lhs = tf.reshape(x, [-1, nx])
+        rhs = tf.reshape(w, [-1, nf])
+        if True:
+          lhs_n = tf.split(lhs, 8, axis=1)
+          rhs_n = tf.split(rhs, 8, axis=0)
+          ops = []
+          for i in range(8):
+            ops.append(tf.matmul(lhs_n[i], rhs_n[i]))
+          W = tf.reduce_sum(ops, axis=0)
+        else:
+          W = tf.matmul(lhs, rhs)
+        lhs1 = W+b
+        rhs1 = start+[nf]
+        c = tf.reshape(lhs1, rhs1)
         return c
 
 def attention_mask(nd, ns, *, dtype):
