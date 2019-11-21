@@ -152,6 +152,7 @@ class TrainGPT2(object):
     self.args = args
     self.hparams = hparams
     self.sampler = sampler
+    self.scope = scope
     self.enc = enc
     if session is None:
       config = tf.ConfigProto()
