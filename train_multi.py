@@ -194,7 +194,7 @@ class TrainGPT2(object):
       scope = self.scope
       session = self.sess
       with session.as_default():
-        with tf.device(core):
+        with tf.device(self.core):
           #context = tf.placeholder(tf.int32, [args.batch_size, None])
           context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
           context_in = randomize(context, hparams, args.noise)
