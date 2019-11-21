@@ -192,10 +192,9 @@ class TrainGPT2(object):
       args = self.args
       hparams = self.hparams
       scope = self.scope
-      #with session.as_default():
-        #with tf.device(core):
-      if True:
-        if True:
+      session = self.sess
+      with session.as_default():
+        with tf.device(core):
           #context = tf.placeholder(tf.int32, [args.batch_size, None])
           context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
           context_in = randomize(context, hparams, args.noise)
@@ -213,9 +212,9 @@ class TrainGPT2(object):
         with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
           global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
           current_step = args.learning_rate_initial_step
-          global_step.load(current_step, session=self.sess)
+          global_step.load(current_step, session=session)
           lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
-          lr.load(args.learning_rate, session=self.sess)
+          lr.load(args.learning_rate, session=session)
 
         if args.optimizer == 'adam':
           opt = tf.train.AdamOptimizer(learning_rate=lr)
@@ -254,7 +253,7 @@ class TrainGPT2(object):
         self.lr = lr
         self.current_step = current_step
         self.global_step = global_step
-      self.sess.run(self.init)
+        session.run(self.init)
       self.init = None
     v_rate = self.update_lr()
     self.say('Generating batch...')
