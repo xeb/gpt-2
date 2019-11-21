@@ -15,7 +15,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 
 import model, sample, encoder
-from load_dataset import load_dataset, Sampler
+from load_dataset import load_dataset, Sampler, TextSampler
 from accumulate import AccumulatingOptimizer
 import memory_saving_gradients
 from glob import glob
@@ -339,12 +339,15 @@ def main():
         print('Loaded in %f seconds' % (t1 - t0))
 
         print('Loading dataset...')
-        chunks = load_dataset(enc, args.dataset, args.combine)
         seed = None if args.seed < 0 else args.seed
-        data_sampler = Sampler(chunks, seed=seed)
+        if os.path.isdir(args.dataset) or args.dataset.endswith('.npz'):
+          chunks = load_dataset(enc, args.dataset, args.combine)
+          data_sampler = Sampler(chunks, seed=seed)
+          print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
+        else:
+          data_sampler = TextSampler(args.dataset, enc, seed=seed)
         if args.val_every > 0:
             val_chunks = load_dataset(enc, args.val_dataset, args.combine) if args.val_dataset else chunks
-        print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
         print('Training...')
 
         if args.val_every > 0:
