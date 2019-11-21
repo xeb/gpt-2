@@ -190,6 +190,7 @@ def main():
             args.only_train_transformer_layers = True
 
     config = tf.ConfigProto()
+    config.allow_soft_placement = True
     if args.allow_growth:
         config.gpu_options.allow_growth = True
     if args.disable_layout_optimizer:
