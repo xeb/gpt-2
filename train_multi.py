@@ -228,8 +228,7 @@ class TrainGPT2(object):
       self.counter = 1
       self.current_step = current_step
       self.global_step = global_step
-      session.run(tf.global_variables_initializer())
-      #self.init = tf.global_variables_initializer()
+      self.init = tf.global_variables_initializer()
     self.start_time = time.time()
     self.prev_time = self.start_time
     
@@ -249,6 +248,10 @@ class TrainGPT2(object):
     return self.lr.eval(session=self.sess)
 
   def fit(self):
+    if self.init is not None:
+      self.say('Initializing...')
+      self.sess.run(self.init)
+      self.init = None
     v_rate = self.update_lr()
     self.say('Generating batch...')
     batch = self.sample_batch()
