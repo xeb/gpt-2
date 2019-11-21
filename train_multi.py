@@ -166,7 +166,9 @@ class TrainGPT2(object):
     self.cores = cores
     self.core = core
     self.init = tf.global_variables_initializer()
-    
+    self.counter = 1
+    self.start_time = time.time()
+    self.prev_time = self.start_time
 
   def sample_batch(self):
     args = self.args
@@ -247,11 +249,8 @@ class TrainGPT2(object):
         self.opt_apply = opt_apply
         self.sess = session
         self.lr = lr
-        self.counter = 1
         self.current_step = current_step
         self.global_step = global_step
-        self.start_time = time.time()
-        self.prev_time = self.start_time
       self.sess.run(self.init)
       self.init = None
     v_rate = self.update_lr()
