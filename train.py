@@ -196,15 +196,15 @@ def main():
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
     with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
+      with tf.device(cores[args.device].name if len(cores) > 0 and args.device >= 0 else None):
         cores = sess.list_devices()[2:]
-        with tf.device(cores[args.device].name if len(cores) > 0 and args.device >= 0 else None):
-          #context = tf.placeholder(tf.int32, [args.batch_size, None])
-          context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context")
-          context_in = randomize(context, hparams, args.noise)
-          output = model.model(hparams=hparams, X=context_in)
-          loss = tf.reduce_mean(
-              tf.nn.sparse_softmax_cross_entropy_with_logits(
-                  labels=context[:, 1:], logits=output['logits'][:, :-1]))
+        #context = tf.placeholder(tf.int32, [args.batch_size, None])
+        context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context")
+        context_in = randomize(context, hparams, args.noise)
+        output = model.model(hparams=hparams, X=context_in)
+        loss = tf.reduce_mean(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=context[:, 1:], logits=output['logits'][:, :-1]))
 
         if args.val_every > 0:
             val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
