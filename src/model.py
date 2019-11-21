@@ -83,7 +83,7 @@ def conv1d(x, scope, nf, *, w_init_stdev=0.02, hparams=None):
         b = get_variable('b') or tf.get_variable('b', [nf], initializer=tf.constant_initializer(0, dtype=dtype))
         lhs = tf.reshape(x, [-1, nx])
         rhs = tf.reshape(w, [-1, nf])
-        if True:
+        if False: # noticeable slowdown https://i.imgur.com/95VAycJ.png
           lhs_n = tf.split(lhs, 8, axis=1)
           rhs_n = tf.split(rhs, 8, axis=0)
           ops = []
