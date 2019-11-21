@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.training import HParams
+import os
 
 def default_hparams():
     return HParams(
@@ -25,9 +26,10 @@ def get_core(i, session=None):
   n = len(_cores)
   if n <= 0:
     return None
-  return _cores[i % n].name
-
-import os
+  result = _cores[i % n].name
+  if 'GPT2_VERBOSE' in os.environ:
+    print(result)
+  return result
 
 def get_variable(name):
     name = os.path.join(tf.get_variable_scope().name, name)
