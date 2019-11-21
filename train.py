@@ -196,8 +196,8 @@ def main():
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
     with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
+      cores = sess.list_devices()[2:]
       with tf.device(cores[args.device].name if len(cores) > 0 and args.device >= 0 else None):
-        cores = sess.list_devices()[2:]
         #context = tf.placeholder(tf.int32, [args.batch_size, None])
         context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context")
         context_in = randomize(context, hparams, args.noise)
