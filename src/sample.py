@@ -37,6 +37,7 @@ def top_p_logits(logits, p, epsilon=-1e10):
 
 
 def sample_sequence(*, hparams, length, start_token=None, batch_size=None, context=None, temperature=1, top_k=0, top_p=0.0, epsilon=-1e10):
+    return tf.no_op()
     if start_token is None:
         assert context is not None, 'Specify exactly one of start_token and context!'
     else:
