@@ -166,6 +166,7 @@ class TrainGPT2(object):
     core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
     self.cores = cores
     self.core = core
+    self.sess = session
     self.init = tf.global_variables_initializer()
     self.counter = 1
     self.start_time = time.time()
