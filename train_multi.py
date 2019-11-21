@@ -163,74 +163,9 @@ class TrainGPT2(object):
       session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
     cores = session.list_devices()[2:]
     core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
-
-    #with session.as_default():
-      #with tf.device(core):
-    if True:
-      if True:
-        #context = tf.placeholder(tf.int32, [args.batch_size, None])
-        context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
-        context_in = randomize(context, hparams, args.noise)
-        output = model.model(hparams=hparams, X=context_in, scope=scope)
-        loss = tf.reduce_mean(
-          tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=context[:, 1:], logits=output['logits'][:, :-1]))
-
-      all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
-      train_vars = [v for v in all_vars if '/h' in v.name] if args.only_train_transformer_layers else all_vars
-
-      parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
-      print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
-
-      with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
-        global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
-        current_step = args.learning_rate_initial_step
-        global_step.load(current_step, session=session)
-        lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
-        lr.load(args.learning_rate, session=session)
-
-      if args.optimizer == 'adam':
-        opt = tf.train.AdamOptimizer(learning_rate=lr)
-      elif args.optimizer == 'sgd':
-        opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
-      elif args.optimizer == 'ada':
-        import tensor2tensor.utils.optimize
-        from tensor2tensor.utils import hparam
-        import tensor2tensor.models.research
-        from tensor2tensor.utils import registry
-        ada_hparams = registry.hparams('afx_mimic_adam')
-        ada_hparams.optimizer_adafactor_beta1 = 0.0
-        ada_hparams.optimizer_adafactor_factored = True
-        opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
-      else:
-        exit('Bad optimizer:', args.optimizer)
-
-      opt_grads = tf.gradients(loss, train_vars)
-      opt_grads = list(zip(opt_grads, train_vars))
-      opt_apply = opt.apply_gradients(opt_grads)
-      summary_loss = tf.summary.scalar('loss', loss)
-
-      summary_lr = tf.summary.scalar('learning_rate', lr)
-      summaries = tf.summary.merge([summary_lr, summary_loss])
-      self.summary_log = tf.summary.FileWriter(
-            os.path.join(CHECKPOINT_DIR, args.run_name))
-      self.summaries = summaries
-      self.loss = loss
-      self.context = context
-      self.output = output
-      self.opt = opt
-      self.all_vars = all_vars
-      self.train_vars = train_vars
-      self.opt_grads = opt_grads
-      self.opt_apply = opt_apply
-      self.sess = session
-      self.lr = lr
-      self.counter = 1
-      self.current_step = current_step
-      self.global_step = global_step
-      self.init = tf.global_variables_initializer()
-    self.start_time = time.time()
-    self.prev_time = self.start_time
+    self.cores = cores
+    self.core = core
+    self.init = tf.global_variables_initializer()
     
 
   def sample_batch(self):
@@ -250,6 +185,73 @@ class TrainGPT2(object):
   def fit(self):
     if self.init is not None:
       self.say('Initializing...')
+      args = self.args
+      #with session.as_default():
+        #with tf.device(core):
+      if True:
+        if True:
+          #context = tf.placeholder(tf.int32, [args.batch_size, None])
+          context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
+          context_in = randomize(context, hparams, args.noise)
+          output = model.model(hparams=hparams, X=context_in, scope=scope)
+          loss = tf.reduce_mean(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
+              labels=context[:, 1:], logits=output['logits'][:, :-1]))
+
+        all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
+        train_vars = [v for v in all_vars if '/h' in v.name] if args.only_train_transformer_layers else all_vars
+
+        parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
+        print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
+
+        with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
+          global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
+          current_step = args.learning_rate_initial_step
+          global_step.load(current_step, session=session)
+          lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
+          lr.load(args.learning_rate, session=session)
+
+        if args.optimizer == 'adam':
+          opt = tf.train.AdamOptimizer(learning_rate=lr)
+        elif args.optimizer == 'sgd':
+          opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
+        elif args.optimizer == 'ada':
+          import tensor2tensor.utils.optimize
+          from tensor2tensor.utils import hparam
+          import tensor2tensor.models.research
+          from tensor2tensor.utils import registry
+          ada_hparams = registry.hparams('afx_mimic_adam')
+          ada_hparams.optimizer_adafactor_beta1 = 0.0
+          ada_hparams.optimizer_adafactor_factored = True
+          opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
+        else:
+          exit('Bad optimizer:', args.optimizer)
+
+        opt_grads = tf.gradients(loss, train_vars)
+        opt_grads = list(zip(opt_grads, train_vars))
+        opt_apply = opt.apply_gradients(opt_grads)
+        summary_loss = tf.summary.scalar('loss', loss)
+
+        summary_lr = tf.summary.scalar('learning_rate', lr)
+        summaries = tf.summary.merge([summary_lr, summary_loss])
+        self.summary_log = tf.summary.FileWriter(
+              os.path.join(CHECKPOINT_DIR, args.run_name))
+        self.summaries = summaries
+        self.loss = loss
+        self.context = context
+        self.output = output
+        self.opt = opt
+        self.all_vars = all_vars
+        self.train_vars = train_vars
+        self.opt_grads = opt_grads
+        self.opt_apply = opt_apply
+        self.sess = session
+        self.lr = lr
+        self.counter = 1
+        self.current_step = current_step
+        self.global_step = global_step
+        self.start_time = time.time()
+        self.prev_time = self.start_time
       self.sess.run(self.init)
       self.init = None
     v_rate = self.update_lr()
