@@ -212,15 +212,15 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
         h = tf.gather(wte, X) + tf.gather(wpe, positions_for(X, past_length))
 
         # Transformer
-        presents = []
+        #presents = []
         pasts = tf.unstack(past, axis=1) if past is not None else [None] * hparams.n_layer
         assert len(pasts) == hparams.n_layer
         for layer, past in enumerate(pasts):
             h, present = block(h, 'h%d' % layer, past=past, hparams=hparams)
             #if layer == 10:
             #    tf.add_to_collection('checkpoints', h)
-            presents.append(present)
-        results['present'] = tf.stack(presents, axis=1)
+            #presents.append(present)
+        #results['present'] = tf.stack(presents, axis=1)
         h = norm(h, 'ln_f', hparams=hparams)
 
         # Language model loss.  Do tokens <n predict token n?
