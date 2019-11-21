@@ -114,6 +114,7 @@ def nextchars(f, n):
     return s
 
 def grab_tokens(f, enc, n):
+  n += 4
   count = n
   line = nextchars(f, count)
   if not line:
