@@ -188,6 +188,7 @@ class TrainGPT2(object):
     if self.init is not None:
       self.say('Initializing...')
       args = self.args
+      hparams = self.hparams
       #with session.as_default():
         #with tf.device(core):
       if True:
