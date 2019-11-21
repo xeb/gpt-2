@@ -41,7 +41,7 @@ parser.add_argument('--model_name', metavar='MODEL', type=str, default='117M', h
 parser.add_argument('--combine', metavar='CHARS', type=int, default=50000, help='Concatenate input files with <|endoftext|> separator into chunks of this minimum size')
 
 parser.add_argument('--batch_size', metavar='SIZE', type=int, default=1, help='Batch size')
-parser.add_argument('--learning_rate', metavar='LR', type=float, default=0.000002, help='Learning rate for Adam')
+parser.add_argument('--learning_rate', metavar='LR', type=float, default=0.00015, help='Learning rate for Adam')
 parser.add_argument('--learning_rate_min', type=float, default=0.00001, help='Minimum learning rate')
 parser.add_argument('--learning_rate_cos', default=False, action='store_true', help='Use learn rate cosine annealing')
 parser.add_argument('--learning_rate_warmup', type=int, default=100, help='Learning rate warmup for cosine annealing')
