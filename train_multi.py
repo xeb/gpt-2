@@ -343,7 +343,7 @@ def main():
 
     local = threading.local()
 
-    targets = args.targets.split(',')
+    targets = [x.trim() for x in args.targets.split(',') if len(x.trim()) > 0]
     if len(targets) <= 0:
       targets.append('auto')
     local.train = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target) for target in targets]
