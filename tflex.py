@@ -24,8 +24,10 @@ def get_tpu_addr(tpu_name=None):
 def get_session_target(target='auto'):
     if target == 'auto':
       target = get_tpu_addr()
-      if target is not None:
-        print("Using TPU %s" % target)
+    elif target is not None:
+      target = get_tpu_addr(target)
+    if target is not None:
+      print("Using TPU %s" % target)
     return target
 
 class Session(tf.Session):
