@@ -45,7 +45,7 @@ parser.add_argument('--learning_rate_min', type=float, default=0.00001, help='Mi
 parser.add_argument('--learning_rate_cos', default=False, action='store_true', help='Use learn rate cosine annealing')
 parser.add_argument('--learning_rate_warmup', type=int, default=100, help='Learning rate warmup for cosine annealing')
 parser.add_argument('--learning_rate_period', type=int, default=100, help='Learning rate period for cosine annealing')
-parser.add_argument('--learning_rate_initial_step', type=int, default=0, help='Learning rate initial step for cosine annealing')
+parser.add_argument('--learning_rate_initial_step', type=int, default=-1, help='Learning rate initial step for cosine annealing. If < 0, use the counter value from the last snapshot.')
 parser.add_argument('--accumulate_gradients', metavar='N', type=int, default=1, help='Accumulate gradients across N minibatches.')
 parser.add_argument('--memory_saving_gradients', default=False, action='store_true', help='Use gradient checkpointing to reduce vram usage.')
 parser.add_argument('--only_train_transformer_layers', default=False, action='store_true', help='Restrict training to the transformer blocks.')
@@ -232,8 +232,6 @@ def main():
 
         with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
             global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
-            current_step = args.learning_rate_initial_step
-            global_step.load(current_step, session=sess)
             if args.learning_rate_cos:
                 lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
                     warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
@@ -367,6 +365,10 @@ def main():
             # Add 1 so we don't immediately try to save again
             with open(counter_path, 'r') as fp:
                 counter = int(fp.read()) + 1
+        current_step = args.learning_rate_initial_step
+        if current_step < 0:
+          current_step = counter
+        global_step.load(current_step, session=sess)
 
         @tflex.register_command
         def save():
