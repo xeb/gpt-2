@@ -9,6 +9,7 @@ import numpy as np
 
 from grover import GroverModel, GroverConfig, sample
 import tokenization
+import tflex
 
 ##### ignore tf deprecated warning temporarily
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -158,7 +159,7 @@ top_p = np.ones((num_chunks, batch_size_per_chunk), dtype=np.float32) * args.top
 
 tf_config = tf.ConfigProto(allow_soft_placement=True)
 
-with tf.Session(config=tf_config, graph=tf.Graph()) as sess:
+with tflex.Session(config=tf_config, graph=tf.Graph()) as sess:
     initial_context = tf.placeholder(tf.int32, [batch_size_per_chunk, None])
     p_for_topp = tf.placeholder(tf.float32, [batch_size_per_chunk])
     eos_token = tf.placeholder(tf.int32, [])
