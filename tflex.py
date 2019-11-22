@@ -191,7 +191,7 @@ class Saver(object):
     self.checkpoints = []
 
   def restore(self, sess, save_path):
-    if save_path.endswith('.ckpt'):
+    if '.ckpt' in save_path:
       load_snapshot(save_path, session=sess, var_list=self.var_list, reshape=self.reshape)
     elif save_path.endswith('.hdf5'):
       load_variables(save_path, session=sess, var_list=self.var_list, reshape=self.reshape)
