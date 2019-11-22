@@ -49,6 +49,13 @@ def get_pairs(word):
         prev_char = char
     return pairs
 
+def rep(x):
+  if isinstance(x, str):
+    return x
+  if isinstance(x, bytes):
+    return x
+  return repr(x)
+
 
 class Encoder:
     def __init__(self, encoder, bpe_merges, errors='replace'):
@@ -59,11 +66,11 @@ class Encoder:
         del self.encoder['<|endoftext|>']
 
         for special_token_type in ['domain', 'date', 'authors', 'title', 'article', 'summary']:
-            setattr(self, f'begin_{special_token_type}', len(self.encoder))
-            self.encoder[f'<|begin{special_token_type}|>'] = len(self.encoder)
+            setattr(self, 'begin_%s' % rep(special_token_type), len(self.encoder))
+            self.encoder['<|begin%s|>' % rep(special_token_type)] = len(self.encoder)
 
-            setattr(self, f'end_{special_token_type}', len(self.encoder))
-            self.encoder[f'<|endof{special_token_type}|>'] = len(self.encoder)
+            setattr(self, 'end_%s' % rep(special_token_type), len(self.encoder))
+            self.encoder['<|endof%s|>' % rep(special_token_type)] = len(self.encoder)
 
         # This will be used if we want to combine short articles.
         self.reset_context = len(self.encoder)
@@ -358,12 +365,12 @@ def format_context(encoder, news_article, target):
             metadata = news_article.get('title', '')  # Just copy from the title maybe?
 
         if metadata:
-            tokens.append(encoder.__dict__[f'begin_{metadata_category}'])
+            tokens.append(encoder.__dict__['begin_%s' % rep(metadata_category)])
             tokens.extend(encoder.encode(metadata))
-            tokens.append(encoder.__dict__[f'end_{metadata_category}'])
+            tokens.append(encoder.__dict__['end_%s' % rep(metadata_category)])
 
     assert target in (canonical_metadata_order + ['summary'])
-    tokens.append(encoder.__dict__[f'begin_{target}'])
+    tokens.append(encoder.__dict__['begin_%s' % rep(target)])
     return tokens
 
 
@@ -378,13 +385,13 @@ def extract_generated_target(output_tokens, encoder, target):
     # Filter out first instance of start token
     assert output_tokens.ndim == 1
 
-    start_tokens = output_tokens == encoder.__dict__[f'begin_{target}']
+    start_tokens = output_tokens == encoder.__dict__['begin_%s' % rep(target)]
     if np.any(start_tokens):
         start_ind = np.argmax(start_tokens) + 1
     else:
         start_ind = 0
 
-    end_tokens = output_tokens == encoder.__dict__[f'end_{target}']
+    end_tokens = output_tokens == encoder.__dict__['end_%s' % rep(target)]
     if np.any(end_tokens):
         end_ind = np.argmax(end_tokens)
     else:
