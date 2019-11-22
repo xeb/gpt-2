@@ -45,7 +45,7 @@ parser.add_argument(
 parser.add_argument(
     '-model_config_fn',
     dest='model_config_fn',
-    default='configs/mega.json',
+    default='configs/mega-chinese.json',
     type=str,
     help='Configuration JSON for the model',
 )
