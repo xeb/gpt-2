@@ -3,8 +3,8 @@ import numpy as np
 import sys
 import json
 
-sys.path.append('../')
-sys.path.append('../src')
+sys.path.append('./')
+sys.path.append('./src')
 from grover import GroverModel, GroverConfig, _top_p_sample, sample
 from sample.encoder import get_encoder, format_context, _tokenize_article_pieces, extract_generated_target
 from tqdm import tqdm
@@ -28,14 +28,14 @@ parser.add_argument(
 parser.add_argument(
     '-model_config_fn',
     dest='model_config_fn',
-    default='../configs/mega.json',
+    default='./configs/mega.json',
     type=str,
     help='Configuration JSON for the model',
 )
 parser.add_argument(
     '-model_ckpt',
     dest='model_ckpt',
-    default='../models/mega/model.ckpt',
+    default='./models/mega/model.ckpt',
     type=str,
     help='checkpoint file for the model',
 )
