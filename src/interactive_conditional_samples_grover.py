@@ -8,7 +8,7 @@ import tensorflow as tf
 import numpy as np
 
 from grover import GroverModel, GroverConfig, sample
-from tokenization import tokenization
+import tokenization
 
 ##### ignore tf deprecated warning temporarily
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
