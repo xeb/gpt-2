@@ -168,7 +168,7 @@ with tflex.Session(config=tf_config, graph=tf.Graph()) as sess:
                            eos_token=eos_token, min_len=min_len, ignore_ids=None, p_for_topp=p_for_topp,
                            do_topk=False)
 
-    saver = tf.train.Saver()
+    saver = tflex.Saver()
     saver.restore(sess, args.model_ckpt)
     print('🍺Model loaded. \nInput something please:⬇️')
     text = input()
