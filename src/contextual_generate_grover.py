@@ -112,7 +112,7 @@ with tflex.Session(config=tf_config, graph=tf.Graph()) as sess, \
     p_for_topp = tf.placeholder(tf.float32, [batch_size_per_chunk])
     eos_token = tf.placeholder(tf.int32, [])
     ignore_ids = tf.placeholder(tf.bool, [news_config.vocab_size])
-    tokens, probs = sample(news_config=news_config, initial_context=initial_context,
+    tokens, probs = sample(news_config=news_config, initial_context=initial_context, min_len=128,
                            eos_token=eos_token, ignore_ids=ignore_ids, p_for_topp=p_for_topp,
                            do_topk=False)
 
