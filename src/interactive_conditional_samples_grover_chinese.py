@@ -52,7 +52,7 @@ parser.add_argument(
 parser.add_argument(
     '-model_ckpt',
     dest='model_ckpt',
-    default='../models/mega/model.ckpt',
+    default='../models/mega-chinese/model.ckpt',
     type=str,
     help='checkpoint file for the model',
 )
