@@ -58,11 +58,14 @@ def split_by_params(vs, n=200e6, f=None):
 def latest_checkpoint(checkpoint_dir, latest_filename=None):
   paths = [x for x in glob(os.path.join(checkpoint_dir, 'model-*.*')) if not x.endswith(".tmp")]
   ctrs = np.array([[int(y) for y in re.findall(r'model-([0-9]+)(?:-[0-9]+)?[.](?:npy|hdf5)', x)] for x in paths]).flatten()
-  if len(ctrs) <= 0:
-    ckpt = tf.train.latest_checkpoint(checkpoint_dir, latest_filename=latest_filename)
-    return ckpt
-  ctr = ctrs.max()
-  return os.path.join(checkpoint_dir, 'model-{}').format(ctr)
+  if len(ctrs) > 0:
+    ctr = ctrs.max()
+    return os.path.join(checkpoint_dir, 'model-{}').format(ctr)
+  ckpt = tf.train.latest_checkpoint(checkpoint_dir, latest_filename=latest_filename)
+  if ckpt is None:
+    for ckpt in glob(os.path.join(checkpoint_dir, '*.ckpt.data-00000-of-00001')):
+      return ckpt
+  return ckpt
 
 def truncate_value(variable, value, reshape=True):
   if not reshape:
