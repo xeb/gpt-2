@@ -64,7 +64,7 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   ckpt = tf.train.latest_checkpoint(checkpoint_dir, latest_filename=latest_filename)
   if ckpt is None:
     for ckpt in glob(os.path.join(checkpoint_dir, '*.ckpt.data-00000-of-00001')):
-      return ckpt
+      return ckpt.split('.data-00000-of-00001')[0]
   return ckpt
 
 def truncate_value(variable, value, reshape=True):
