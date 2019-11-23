@@ -395,9 +395,24 @@ def main():
         def make_sampler(dataset, enc, seed, combine):
           if args.grover:
             class GroverSampler(object):
+              def __init__(self, dataset, encoder):
+                self.dataset = dataset
+                self.encoder = encoder
+                self.iter = article_iterator(encoder, dataset)
+                self.epoch = 0
+                self.tokens = []
               def sample(self, count):
-                return [np.random.randint(0,hparams.n_vocab) for _ in range(count)]
-            return GroverSampler()
+                if count > len(self.tokens):
+                  article = next(self.iter)
+                  if not article:
+                    self.epoch += 1
+                    self.iter = article_iterator(encoder, dataset)
+                    article = next(self.iter)
+                  self.tokens = self.tokens + article['input_ids']
+                result = self.tokens[0:count]
+                self.tokens = self.tokens[count:]
+                return result
+            return GroverSampler(dataset=dataset, encoder=enc)
           if os.path.isdir(dataset) or dataset.endswith('.npz'):
             chunks = load_dataset(enc, dataset, combine)
             data_sampler = Sampler(chunks, seed=seed)
