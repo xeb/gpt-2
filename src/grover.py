@@ -701,6 +701,156 @@ def model_fn_builder(config: GroverConfig, init_checkpoint, learning_rate,
     return model_fn
 
 
+def grover_builder(config: GroverConfig, init_checkpoint, learning_rate,
+                   num_train_steps, num_warmup_steps, use_tpu, var_list=None, global_step=None):
+    """Returns `model_fn` closure for TPUEstimator."""
+
+    def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
+        """The `model_fn` for TPUEstimator."""
+
+        tf.logging.info("*** Features ***")
+        for name in sorted(features.keys()):
+            tf.logging.info("  name = %s, shape = %s" % (name, features[name]))
+
+        input_ids = features["input_ids"]
+
+        is_training = (mode == tf.estimator.ModeKeys.TRAIN)
+
+        model = GroverModel(
+            config=config,
+            is_training=is_training,
+            input_ids=input_ids,
+            pad_token_id=config.pad_token_id,
+            chop_off_last_token=True,
+        )
+
+        total_loss = model.lm_loss()
+
+        if is_training:
+            train_op, train_metrics, optimizer, tvars, grads = optimization_adafactor.create_optimizer(
+                total_loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu, var_list=var_list, global_step=global_step)
+            #tvars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+        else:
+            optimizer=None
+            grads=None
+            train_op = None
+            train_metrics = {}
+            tvars = var_list if var_list is not None else tf.trainable_variables()
+
+        initialized_variable_names = {}
+        scaffold_fn = None
+        if init_checkpoint:
+            (assignment_map, initialized_variable_names
+             ) = get_assignment_map_from_checkpoint(tvars, init_checkpoint)
+            if use_tpu:
+                def tpu_scaffold():
+                    tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+                    return tf.train.Scaffold()
+
+                scaffold_fn = tpu_scaffold
+            else:
+                tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+
+        tf.logging.info("**** Trainable Variables ****")
+        for var in tvars:
+            init_string = ""
+            if var.name in initialized_variable_names:
+                init_string = ", *INIT_FROM_CKPT*"
+            tf.logging.info("  name = %s, shape = %s%s", var.name, var.shape,
+                            init_string)
+
+        output_spec = None
+        if mode == tf.estimator.ModeKeys.TRAIN:
+            if use_tpu:
+              return {
+                  'model':model,
+                  'metrics':train_metrics,
+                  'optimizer':optimizer,
+                  'grads':grads,
+                  'vars':tvars,
+                  'mode':mode,
+                  'loss':total_loss,
+                  'train_op':train_op,
+                  'host_call':construct_scalar_host_call(metric_dict=train_metrics, model_dir=params['model_dir'],
+                                                         prefix='training/'),
+                  'scaffold_fn':scaffold_fn
+              }
+            else:
+              return {
+                  'model':model,
+                  'metrics':train_metrics,
+                  'optimizer':optimizer,
+                  'grads':grads,
+                  'vars':tvars,
+                  'mode':mode,
+                  'loss':total_loss,
+                  'train_op':train_op,
+                  'training_hooks':[
+                        tf.train.LoggingTensorHook({'loss': tf.metrics.mean(total_loss)[1]}, every_n_iter=100)],
+                  'scaffold_fn':scaffold_fn
+              }
+
+        elif mode == tf.estimator.ModeKeys.EVAL:
+            def metric_fn(total_loss):
+                loss = tf.metrics.mean(values=total_loss)
+                return {
+                    "eval_loss": loss,
+                }
+
+            eval_metrics = (metric_fn,
+                            [total_loss])
+            return {
+                'model':model,
+                'metrics':train_metrics,
+                'optimizer':optimizer,
+                'grads':grads,
+                'vars':tvars,
+                'mode':mode,
+                'loss':total_loss,
+                'train_op':train_op,
+                'eval_metrics':eval_metrics,
+                'scaffold_fn':scaffold_fn
+            }
+        else:
+            gt_logprobs = tf.squeeze(tf.batch_gather(model.log_probs, model.target_ids[:, :, None]), axis=2)
+
+            # Need top-p required under topp sampling!
+            better_than_gt = model.log_probs > gt_logprobs[:, :, None]
+            top_p_required = tf.reduce_sum(tf.cast(better_than_gt, tf.float32) * tf.exp(model.log_probs), axis=2)
+
+            # No top-p sampling for now, since this seems to be too slow on TPUs
+            if use_tpu:
+                predictions = tf.reshape(
+                    tf.random.categorical(logits=model.logits_flat, num_samples=1),
+                    get_shape_list(model.target_ids),
+                )
+            else:
+                # Argmax
+                # predictions = tf.math.argmax(model.log_probs, axis=-1, output_type=tf.int32)
+                predictions = tf.reshape(
+                    _top_p_sample(model.logits_flat, num_samples=1, p=0.99)['sample'],
+                    get_shape_list(model.target_ids),
+                )
+            pred_logprobs = tf.squeeze(tf.batch_gather(model.log_probs, predictions[:, :, None]), axis=2)
+
+            return {
+                'model':model,
+                'metrics':train_metrics,
+                'optimizer':optimizer,
+                'grads':grads,
+                'vars':tvars,
+                'mode':mode,
+                'predictions':{'gt_logprobs': gt_logprobs,
+                             'top_p_required': top_p_required,
+                             'predictions': predictions,
+                             'pred_logprobs': pred_logprobs,
+                             'labels': input_ids},
+                'scaffold_fn':scaffold_fn
+            }
+        assert(False) # should not get here
+
+    return model_fn
+
 def sample_step(tokens, ignore_ids, news_config, batch_size=1, p_for_topp=0.95, cache=None, do_topk=False):
     """
     Helper function that samples from grover for a single step

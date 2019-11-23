@@ -188,7 +188,7 @@ def _tokenize_article_pieces(encoder, item):
         article_pieces['summary'] = [encoder.begin_summary] + encoder.encode(item['summary']) + [encoder.end_summary]
 
     # 5/6: date
-    date_split = item['publish_date'].split('-')
+    date_split = (item['publish_date'] if 'publish-date' in item else '11-11-2012').split('-')
     assert len(date_split) == 3
     assert date_split[0].isdigit()
 
@@ -403,7 +403,79 @@ def extract_generated_target(output_tokens, encoder, target):
         'end_ind': end_ind,
     }
 
+import json
+
+def article_json_iterator(encoder, input_fn, final_desired_size=1025, fold=0, num_folds=1):
+    """ Iterate through the provided filename + tokenize"""
+    assert os.path.exists(input_fn)
+    with open(input_fn, 'r') as f:
+        for l_no, l in enumerate(f):
+            if l_no % num_folds == fold:
+                article = json.loads(l)
+                article['input_ids'] = tokenize_for_grover_training(encoder, article, desired_size=final_desired_size,
+                                                                    unconditional_prob=.35)
+                article['inst_index'] = (l_no // num_folds)
+                if article['inst_index'] < 100 and 'GPT2_VERBOSE' in os.environ:
+                    print('---\nINPUT{}. {}\n---\nTokens: {}\n'.format(article['inst_index'],
+                                                                       detokenize(encoder, article['input_ids']),
+                                                                       article['input_ids']
+                                                                       ), flush=True)
+                if len(article['input_ids']) == 0:
+                    continue
+                yield article
+
+def article_text_iterator(encoder, input_fn, final_desired_size=1025, fold=0, num_folds=1):
+  assert os.path.exists(input_fn)
+  with open(input_fn, 'r') as f:
+    indata = f.read() + '\n<|endoftext|>\n'
+    indata = indata.replace('\n<|endoftext|>\n', '\nArticle:\n')
+    for l_no, part in enumerate(indata.split('\nArticle:\n')):
+      article = {}
+      for line in part.strip().splitlines():
+        lhs = line.split(':', 1)[0]
+        if lhs == 'Article':
+          continue
+        lhs, rhs = line.split(': ', 1)
+        if lhs in ['authors', 'keywords']:
+          rhs = rhs.replace("['", '["')
+          rhs = rhs.replace("']", '"]')
+          rhs = rhs.replace("', '", '", "')
+          rhs = rhs.replace("', \"", '", "')
+          rhs = rhs.replace("\", '", '", "')
+          rhs = rhs.replace("','", '", "')
+          rhs = rhs.replace("',\"", '", "')
+          rhs = rhs.replace("\",'", '", "')
+          rhs = json.loads(rhs)
+        else:
+          rhs = json.loads(json.dumps(rhs))
+        article[lhs] = rhs
+      if len(article) > 0:
+        article['input_ids'] = tokenize_for_grover_training(encoder, article, desired_size=final_desired_size,
+                                                            unconditional_prob=.35)
+        article['inst_index'] = (l_no // num_folds)
+        if article['inst_index'] < 100 and 'GPT2_VERBOSE' in os.environ:
+            print('---\nINPUT{}. {}\n---\nTokens: {}\n'.format(article['inst_index'],
+                                                               detokenize(encoder, article['input_ids']),
+                                                               article['input_ids']
+                                                               ), flush=True)
+        if len(article['input_ids']) == 0:
+            continue
+        yield article
+
+def article_iterator(encoder, input_fn, **kws):
+  if input_fn.endswith('.json'):
+    for article in article_json_iterator(encoder, input_fn):
+      yield article
+  else:
+    for article in article_text_iterator(encoder, input_fn):
+      yield article
 
 if __name__ == '__main__':
     encoder = get_encoder()
     print("VOCAB SIZE IS {}".format(len(encoder.encoder)))
+    import sys
+    from pprint import pprint
+    for arg in sys.argv[1:]:
+      for article in article_iterator(encoder, arg):
+        pprint(article)
+

@@ -111,11 +111,15 @@ parser.add_argument('--disable_layout_optimizer', default=False, action='store_t
 
 parser.add_argument('--debug_before_training', default=False, action='store_true', help="Drop into debugger before starting the training loop")
 
-parser.add_argument('--dropout', type=float, default=0.0, help="Dropout value. Disabled if set <= 0.0. For training on large datasets, 0.1 tends to be a good value.")
+parser.add_argument('--dropout', type=float, default=-1.0, help="Dropout value. Disabled if set <= 0.0. For training on large datasets, 0.1 tends to be a good value.")
 
 parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for dataset sampler. Disabled if set < 0')
 
 parser.add_argument('--save_graph', default=False, action='store_true', help="Save TensorFlow graph to summary log (to see ops in tensorboard)")
+
+parser.add_argument('--grover', default=False, action='store_true', help="Training a grover model?")
+parser.add_argument('--config_file', metavar='CONFIG', type=str, default='configs/base.json', help="The config json file corresponding to the pre-trained news model. "
+    "This specifies the model architecture.")
 
 PST = pytz.timezone('US/Pacific')
 
@@ -141,13 +145,16 @@ def randomize(context, hparams, p):
     else:
         return context
 
+from grover import grover_builder, model_fn_builder, GroverConfig
+from sample.encoder import article_iterator, get_encoder
 
 def main():
     args = parser.parse_args()
-    enc = encoder.get_encoder(args.model_name)
     hparams = model.default_hparams()
-    hparams.res_dropout = args.dropout
-    hparams.attn_dropout = args.dropout
+    if args.grover:
+      enc = get_encoder()
+    else:
+      enc = encoder.get_encoder(args.model_name)
     epsilon = -1e10
     if args.dtype == 'float32':
         hparams.dtype = tf.float32
@@ -163,8 +170,18 @@ def main():
         hparams.dtype = tf.bfloat16
         epsilon = -65500
 
-    with open(os.path.join('models', args.model_name, 'hparams.json')) as f:
-        hparams.override_from_dict(json.load(f))
+    if args.grover:
+      news_config = GroverConfig.from_json_file(args.config_file)
+      hparams.n_vocab = news_config.vocab_size
+      hparams.n_ctx = news_config.max_position_embeddings
+      hparams.n_head = news_config.num_attention_heads
+      hparams.n_embd = news_config.hidden_size
+      hparams.n_layer = news_config.num_hidden_layers
+      hparams.res_dropout = news_config.hidden_dropout_prob
+      hparams.attn_dropout = news_config.attention_probs_dropout_prob
+    else:
+      with open(os.path.join('models', args.model_name, 'hparams.json')) as f:
+          hparams.override_from_dict(json.load(f))
     if args.n_ctx >= 0:
         hparams.n_ctx=args.n_ctx
     if args.n_embd >= 0:
@@ -173,6 +190,9 @@ def main():
         hparams.n_head=args.n_head
     if args.n_layer >= 0:
         hparams.n_layer=args.n_layer
+    if args.dropout >= 0:
+      hparams.res_dropout = args.dropout
+      hparams.attn_dropout = args.dropout
 
     if args.sample_length < 0:
         args.sample_length = hparams.n_ctx - 1
@@ -193,38 +213,6 @@ def main():
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
     with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
-        context = tf.placeholder(tf.int32, [args.batch_size, None])
-        context_in = randomize(context, hparams, args.noise)
-        output = model.model(hparams=hparams, X=context_in)
-        loss = tf.reduce_mean(
-            tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=context[:, 1:], logits=output['logits'][:, :-1]))
-
-        if args.val_every > 0:
-            val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
-            val_output = model.model(hparams=hparams, X=val_context)
-            val_loss = tf.reduce_mean(
-                tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
-            val_loss_summary = tf.summary.scalar('val_loss', val_loss)
-
-
-        tf_sample = sample.sample_sequence(
-            hparams=hparams,
-            length=args.sample_length,
-            context=context,
-            batch_size=args.batch_size,
-            temperature=1.0,
-            top_k=args.top_k,
-            top_p=args.top_p,
-            epsilon=epsilon)
-
-        all_vars = [v for v in tf.trainable_variables() if 'model' in v.name]
-        train_vars = [v for v in all_vars if '/h' in v.name] if args.only_train_transformer_layers else all_vars
-
-        parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
-        print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
-
         with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
             global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
             current_step = args.learning_rate_initial_step
@@ -235,6 +223,64 @@ def main():
             else:
                 lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
                 lr.load(args.learning_rate, session=sess)
+        context = tf.placeholder(tf.int32, [args.batch_size, None])
+        context_in = randomize(context, hparams, args.noise)
+        if args.grover:
+          grover_fn = grover_builder(news_config,
+                                      #init_checkpoint=FLAGS.init_checkpoint,
+                                      #learning_rate=FLAGS.learning_rate,
+                                      #num_train_steps=FLAGS.num_train_steps,
+                                      #num_warmup_steps=FLAGS.num_warmup_steps,
+                                      #use_tpu=FLAGS.use_tpu,
+                                      init_checkpoint=None,
+                                      learning_rate=lr,
+                                      num_train_steps=args.learning_rate_period,
+                                      num_warmup_steps=args.learning_rate_warmup,
+                                      use_tpu=True,
+                                      global_step=global_step
+                                      )
+          features = {
+              'input_ids': context
+          }
+          output = grover_fn(features, None, mode=tf.estimator.ModeKeys.TRAIN, params={'model_dir': os.path.join('models', args.model_name)})
+          metrics = output['metrics']
+          loss = output['loss']
+          lr = metrics['learning_rate']
+        else:
+          output = model.model(hparams=hparams, X=context_in)
+          loss = tf.reduce_mean(
+              tf.nn.sparse_softmax_cross_entropy_with_logits(
+                  labels=context[:, 1:], logits=output['logits'][:, :-1]))
+
+        if args.val_every > 0 and not args.grover: # todo: grover
+            val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
+            val_output = model.model(hparams=hparams, X=val_context)
+            val_loss = tf.reduce_mean(
+                tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
+            val_loss_summary = tf.summary.scalar('val_loss', val_loss)
+
+
+        if not args.grover:
+          tf_sample = sample.sample_sequence(
+              hparams=hparams,
+              length=args.sample_length,
+              context=context,
+              batch_size=args.batch_size,
+              temperature=1.0,
+              top_k=args.top_k,
+              top_p=args.top_p,
+              epsilon=epsilon)
+
+        if args.grover:
+          all_vars = output['vars']
+          train_vars = all_vars
+        else:
+          all_vars = [v for v in tf.trainable_variables() if 'model' in v.name]
+          train_vars = [v for v in all_vars if '/h' in v.name] if args.only_train_transformer_layers else all_vars
+
+        parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
+        print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
 
         def update_lr(rate=None, step=None):
           if not args.learning_rate_cos:
@@ -262,7 +308,9 @@ def main():
           print("Setting learn rate to %0.8f" % rate)
           args.learning_rate = rate
 
-        if args.optimizer == 'adam':
+        if args.grover:
+            opt = output['optimizer']
+        elif args.optimizer == 'adam':
             opt = tf.train.AdamOptimizer(learning_rate=lr)
         elif args.optimizer == 'sgd':
             opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
@@ -284,7 +332,13 @@ def main():
         #    tpu_function.get_tpu_context().set_number_of_shards(8)
         #    opt = tf.contrib.tpu.CrossShardOptimizer(opt)
 
-        if args.accumulate_gradients > 1:
+        if args.grover:
+            opt_compute = output['grads']
+            opt_grads = list(zip(opt_compute, train_vars))
+            #opt_compute = output['grads']
+            opt_apply = output['train_op']
+            summary_loss = tf.summary.scalar('loss', loss)
+        elif args.accumulate_gradients > 1:
             if args.memory_saving_gradients:
                 exit("Memory saving gradients are not implemented for gradient accumulation yet.")
             opt = AccumulatingOptimizer(
@@ -339,6 +393,11 @@ def main():
         print('Loaded in %f seconds' % (t1 - t0))
 
         def make_sampler(dataset, enc, seed, combine):
+          if args.grover:
+            class GroverSampler(object):
+              def sample(self, count):
+                return [np.random.randint(0,hparams.n_vocab) for _ in range(count)]
+            return GroverSampler()
           if os.path.isdir(dataset) or dataset.endswith('.npz'):
             chunks = load_dataset(enc, dataset, combine)
             data_sampler = Sampler(chunks, seed=seed)
@@ -387,6 +446,8 @@ def main():
         @tflex.register_command
         def generate_samples():
             print('Generating samples...')
+            if args.grover:
+              return # TODO: grover
             context_tokens = data_sampler.sample(1)
             all_text = []
             index = 0
@@ -411,6 +472,8 @@ def main():
         def validation():
             if args.val_every <= 0:
               return
+            if args.grover:
+              return # TODO: grover
             print('Calculating validation loss...')
             losses = []
             for batch in tqdm.tqdm(val_batches):

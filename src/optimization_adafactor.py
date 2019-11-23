@@ -17,11 +17,12 @@ import tensorflow as tf
 from utils import get_shape_list
 
 
-def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
+def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu, var_list=None, global_step=None):
     """Creates an optimizer training op."""
-    global_step = tf.train.get_or_create_global_step()
+    if global_step is None:
+      global_step = tf.train.get_or_create_global_step()
 
-    learning_rate = tf.constant(value=init_lr, shape=[], dtype=tf.float32)
+    learning_rate = tf.constant(value=init_lr, shape=[], dtype=tf.float32) if isinstance(init_lr, float) else init_lr
 
     # Implements linear decay of the learning rate.
     learning_rate = tf.train.polynomial_decay(
@@ -62,7 +63,7 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
     if use_tpu:
         optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
-    tvars = tf.trainable_variables()
+    tvars = var_list if var_list is not None else tf.trainable_variables()
     grads = tf.gradients(loss, tvars)
 
     # You could do this, but instead we don't because a) it's slow and b) we already did the 'update clipping'
@@ -82,7 +83,7 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
         'minibatch_loss': loss,
         # 'minibatch_ppl': tf.math.exp(loss),
     }
-    return train_op, train_metrics
+    return train_op, train_metrics, optimizer, tvars, grads
 
 
 class AdaFactorOptimizer(tf.train.Optimizer):
