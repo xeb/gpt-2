@@ -462,9 +462,76 @@ def article_text_iterator(encoder, input_fn, final_desired_size=1025, fold=0, nu
             continue
         yield article
 
-def article_iterator(encoder, input_fn, is_json=None, **kws):
-  if is_json is None and input_fn.endswith('.json') or is_json:
+
+def _decode_record(record, name_to_features):
+    """Decodes a record to a TensorFlow example."""
+    example = tf.parse_single_example(record, name_to_features)
+
+    # tf.Example only supports tf.int64, but the TPU only supports tf.int32.
+    # So cast all int64 to int32.
+    for name in list(example.keys()):
+        t = example[name]
+        if t.dtype == tf.int64:
+            t = tf.cast(t, tf.int32)
+        example[name] = t
+    return example
+
+def article_tfrecord_iterator(encoder, input_files, final_desired_size=1025, fold=0, num_folds=1, num_cpu_threads=4, evaluate_for_fixed_number_of_steps=True, is_training=True, batch_size=1):
+  if isinstance(input_files, str):
+    input_files = input_files.split(',')
+  name_to_features = { "input_ids": tf.FixedLenFeature([final_desired_size], tf.int64), }
+
+  # For training, we want a lot of parallel reading and shuffling.
+  # For eval, we want no shuffling and parallel reading doesn't matter.
+  if is_training:
+    d = tf.data.Dataset.from_tensor_slices(tf.constant(input_files))
+    d = d.repeat()
+    #d = tf.data.TFRecordDataset(input_files)
+    #d = d.shuffle(buffer_size=len(input_files))
+
+    # `cycle_length` is the number of parallel files that get read.
+    cycle_length = min(num_cpu_threads, len(input_files))
+
+    # `sloppy` mode means that the interleaving is not exact. This adds
+    # even more randomness to the training pipeline.
+    d = d.apply(
+        tf.data.experimental.parallel_interleave(
+            tf.data.TFRecordDataset,
+            sloppy=is_training,
+            cycle_length=cycle_length))
+    d = d.shuffle(buffer_size=100)
+  else:
+    d = tf.data.TFRecordDataset(input_files)
+    # If we evaluate for a fixed number of steps we don't want to encounter
+    # out-of-range exceptions.
+    if evaluate_for_fixed_number_of_steps:
+        d = d.repeat()
+
+  # We must `drop_remainder` on training because the TPU requires fixed
+  # size dimensions. For eval, we assume we are evaluating on the CPU or GPU
+  # and we *don't* want to drop the remainder, otherwise we wont cover
+  # every sample.
+  d = d.apply(
+      tf.data.experimental.map_and_batch(
+          lambda record: _decode_record(record, name_to_features),
+          batch_size=batch_size,
+          num_parallel_batches=num_cpu_threads,
+          drop_remainder=True))
+  it = d.make_one_shot_iterator()
+  while True:
+    item = it.get_next()
+    if item is None:
+      break
+    #item['input_ids'] = item['input_ids'].eval(session=tf.get_default_session())
+    yield item
+    
+
+def article_iterator(encoder, input_fn, input_format='auto', **kws):
+  if input_format == 'auto' and input_fn.endswith('.json') or input_format == 'json':
     for article in article_json_iterator(encoder, input_fn):
+      yield article
+  elif input_format == 'auto' and input_fn.endswith('.tfrecord') or input_format == 'tfrecord':
+    for article in article_tfrecord_iterator(encoder, input_fn):
       yield article
   else:
     for article in article_text_iterator(encoder, input_fn):

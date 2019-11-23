@@ -398,20 +398,32 @@ def main():
               def __init__(self, dataset, encoder):
                 self.dataset = dataset
                 self.encoder = encoder
-                self.iter = article_iterator(encoder, dataset, is_json=True)
+                self.iter = article_iterator(encoder, dataset, final_desired_size=hparams.n_ctx+1)
                 self.epoch = 0
                 self.tokens = []
+
               def sample(self, count):
-                if count > len(self.tokens):
+                if '.tfrecord' in self.dataset:
                   article = next(self.iter)
                   if not article:
                     self.epoch += 1
-                    self.iter = article_iterator(encoder, dataset, is_json=True)
+                    self.iter = article_iterator(encoder, dataset, final_desired_size=hparams.n_ctx+1)
                     article = next(self.iter)
-                  self.tokens = self.tokens + article['input_ids']
-                result = self.tokens[0:count]
-                self.tokens = self.tokens[count:]
-                return result
+                  import pdb
+                  pdb.set_trace()
+                  result = article['input_ids'][-1][0:count]
+                  return result
+                else:
+                  if count > len(self.tokens):
+                    article = next(self.iter)
+                    if not article:
+                      self.epoch += 1
+                      self.iter = article_iterator(encoder, dataset, final_desired_size=hparams.n_ctx+1)
+                      article = next(self.iter)
+                    self.tokens = self.tokens + article['input_ids']
+                  result = self.tokens[0:count]
+                  self.tokens = self.tokens[count:]
+                  return result
             return GroverSampler(dataset=dataset, encoder=enc)
           if os.path.isdir(dataset) or dataset.endswith('.npz'):
             chunks = load_dataset(enc, dataset, combine)
