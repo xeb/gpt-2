@@ -236,7 +236,7 @@ def main():
                                       learning_rate=lr,
                                       num_train_steps=args.learning_rate_period,
                                       num_warmup_steps=args.learning_rate_warmup,
-                                      use_tpu=True,
+                                      use_tpu=False,
                                       global_step=global_step
                                       )
           features = {
