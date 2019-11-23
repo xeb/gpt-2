@@ -398,7 +398,7 @@ def main():
               def __init__(self, dataset, encoder):
                 self.dataset = dataset
                 self.encoder = encoder
-                self.iter = article_iterator(encoder, dataset)
+                self.iter = article_iterator(encoder, dataset, is_json=True)
                 self.epoch = 0
                 self.tokens = []
               def sample(self, count):
@@ -406,7 +406,7 @@ def main():
                   article = next(self.iter)
                   if not article:
                     self.epoch += 1
-                    self.iter = article_iterator(encoder, dataset)
+                    self.iter = article_iterator(encoder, dataset, is_json=True)
                     article = next(self.iter)
                   self.tokens = self.tokens + article['input_ids']
                 result = self.tokens[0:count]

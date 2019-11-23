@@ -462,8 +462,8 @@ def article_text_iterator(encoder, input_fn, final_desired_size=1025, fold=0, nu
             continue
         yield article
 
-def article_iterator(encoder, input_fn, **kws):
-  if input_fn.endswith('.json'):
+def article_iterator(encoder, input_fn, is_json=None, **kws):
+  if is_json is None and input_fn.endswith('.json') or is_json:
     for article in article_json_iterator(encoder, input_fn):
       yield article
   else:
