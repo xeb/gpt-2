@@ -245,7 +245,7 @@ def main():
           output = grover_fn(features, None, mode=tf.estimator.ModeKeys.TRAIN, params={'model_dir': os.path.join('models', args.model_name)})
           metrics = output['metrics']
           loss = output['loss']
-          lr = metrics['learning_rate']
+          #lr = metrics['learning_rate']
         else:
           output = model.model(hparams=hparams, X=context_in)
           loss = tf.reduce_mean(
