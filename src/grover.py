@@ -36,10 +36,9 @@ class GroverConfig(object):
                  hidden_act="gelu",
                  hidden_dropout_prob=0.1,
                  attention_probs_dropout_prob=0.1,
-                 max_position_embeddings=512,
+                 max_position_embeddings=1024,
                  initializer_range=0.02):
         """Constructs NewsConfig.
-
         Args:
           vocab_size: Vocabulary size of `inputs_ids` in `GroverModel`.
           hidden_size: Size of the layers
@@ -147,12 +146,11 @@ def _attention_projection_and_transpose(x_flat, batch_size, seq_length, num_atte
     return output_tensor
 
 
-def attention_layer(x_flat, attention_mask, batch_size, seq_length, size_per_head=512, num_attention_heads=1, *,
+def attention_layer(x_flat, attention_mask, batch_size, seq_length, size_per_head=1024, num_attention_heads=1, *,
                     cache=None,
                     initializer_range=0.02, hidden_dropout_prob=0.1,
                     attention_probs_dropout_prob=0.1, do_cache=False):
     """
-
     :param x_flat: Tensor input, should be [batch_size*seq_length, dim]
     :param attention_mask: Attention mask to use of size [seq_length, seq_length+cached_length]
     :param size_per_head: dim = size_per_head * num_attention_heads
@@ -246,9 +244,7 @@ def residual_mlp_layer(x_flat, intermediate_size, initializer_range=0.02, hidden
     """
     :param x: The attention output. It should be [batch_size*seq_length, dim]
     :param intermediate_size: the hidden projection. By default this is the input_dim * 4.
-
     in the original GPT we would return layer_norm(x_norm + h1) rather than layer_norm(x + h1)
-
     :return:
     """
     batch_size_seq_length, hidden_size = get_shape_list(x_flat, expected_rank=2)
@@ -278,7 +274,7 @@ def embed(input_ids,
           embedding_size,
           position_offset=0,
           initializer_range=0.02,
-          max_position_embeddings=512,
+          max_position_embeddings=1024,
           use_one_hot_embeddings=True):
     """reur and position embeddings
     :param input_ids: int Tensor of shape [batch_size, seq_length].
@@ -350,7 +346,6 @@ def _top_p_sample(logits, ignore_ids=None, num_samples=1, p=0.9):
                         like padding maybe
     :param p: topp threshold to use, either a float or a [batch_size] vector
     :return: [batch_size, num_samples] samples
-
     # TODO FIGURE OUT HOW TO DO THIS ON TPUS. IT'S HELLA SLOW RIGHT NOW, DUE TO ARGSORT I THINK
     """
     with tf.variable_scope('top_p_sample'):
@@ -404,7 +399,6 @@ def _top_k_sample(logits, ignore_ids=None, num_samples=1, k=10):
                         like padding maybe
     :param p: topp threshold to use, either a float or a [batch_size] vector
     :return: [batch_size, num_samples] samples
-
     # TODO FIGURE OUT HOW TO DO THIS ON TPUS. IT'S HELLA SLOW RIGHT NOW, DUE TO ARGSORT I THINK
     """
     with tf.variable_scope('top_p_sample'):
@@ -965,4 +959,3 @@ def sample(news_config: GroverConfig, initial_context, eos_token, min_len, ignor
             back_prop=False,
         )
     return tokens, probs
-
