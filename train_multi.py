@@ -163,10 +163,10 @@ class TrainGPT2(object):
       if args.disable_layout_optimizer:
           config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
       session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
-    cores = session.list_devices()[2:]
-    core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
 
-    with session.as_default():
+    with session.as_default(), tf.Graph().as_default():
+      cores = session.list_devices()[2:]
+      core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
       #with tf.device(core):
       if True:
         #context = tf.placeholder(tf.int32, [args.batch_size, None])
@@ -188,26 +188,26 @@ class TrainGPT2(object):
         current_step = args.learning_rate_initial_step
         lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
 
-      if args.optimizer == 'adam':
-        opt = tf.train.AdamOptimizer(learning_rate=lr)
-      elif args.optimizer == 'sgd':
-        opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
-      elif args.optimizer == 'ada':
-        import tensor2tensor.utils.optimize
-        from tensor2tensor.utils import hparam
-        import tensor2tensor.models.research
-        from tensor2tensor.utils import registry
-        ada_hparams = registry.hparams('afx_mimic_adam')
-        ada_hparams.optimizer_adafactor_beta1 = 0.0
-        ada_hparams.optimizer_adafactor_factored = True
-        opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
-      else:
-        exit('Bad optimizer:', args.optimizer)
+        if args.optimizer == 'adam':
+          opt = tf.train.AdamOptimizer(learning_rate=lr)
+        elif args.optimizer == 'sgd':
+          opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
+        elif args.optimizer == 'ada':
+          import tensor2tensor.utils.optimize
+          from tensor2tensor.utils import hparam
+          import tensor2tensor.models.research
+          from tensor2tensor.utils import registry
+          ada_hparams = registry.hparams('afx_mimic_adam')
+          ada_hparams.optimizer_adafactor_beta1 = 0.0
+          ada_hparams.optimizer_adafactor_factored = True
+          opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
+        else:
+          exit('Bad optimizer:', args.optimizer)
 
-      opt_grads = tf.gradients(loss, train_vars)
-      opt_grads = list(zip(opt_grads, train_vars))
-      opt_apply = opt.apply_gradients(opt_grads)
-      summary_loss = tf.summary.scalar('loss', loss)
+        opt_grads = tf.gradients(loss, train_vars)
+        opt_grads = list(zip(opt_grads, train_vars))
+        opt_apply = opt.apply_gradients(opt_grads)
+        summary_loss = tf.summary.scalar('loss', loss)
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summaries = tf.summary.merge([summary_lr, summary_loss])
