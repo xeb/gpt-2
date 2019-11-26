@@ -226,6 +226,11 @@ class TrainGPT2(object):
       self.counter = 1
       self.current_step = current_step
       self.global_step = global_step
+      self.saver = tflex.Saver(
+            var_list=all_vars,
+            max_to_keep=args.max_to_keep,
+            keep_checkpoint_every_n_hours=2,
+            reshape=args.truncate_weights)
       self.init = tf.global_variables_initializer()
     self.start_time = time.time()
     self.prev_time = self.start_time
@@ -247,6 +252,25 @@ class TrainGPT2(object):
 
   def fit(self):
     if self.init is not None:
+      args = self.args
+      if not args.fresh_model:
+        self.say('Restoring...')
+        saver = self.saver
+        if args.restore_from == 'latest':
+          ckpt = tflex.latest_checkpoint(os.path.join(CHECKPOINT_DIR, args.run_name))
+          if ckpt is None:
+            # Get fresh GPT weights if new run.
+            ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
+        elif args.restore_from == 'fresh':
+          ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
+        else:
+          ckpt = tflex.latest_checkpoint(args.restore_from)
+        print('Loading snapshot %s...' % ckpt)
+        t0 = time.time()
+        if not args.fresh_model:
+          saver.restore(self.sess, ckpt)
+        t1 = time.time()
+        print('Loaded in %f seconds' % (t1 - t0))
       self.say('Initializing...')
       self.sess.run(self.init)
       #global_step.load(current_step, session=session)
