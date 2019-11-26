@@ -254,6 +254,8 @@ class TrainGPT2(object):
 
   def fit(self):
     if self.init is not None:
+      self.say('Initializing...')
+      self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
       args = self.args
       if not args.fresh_model:
         self.say('Restoring...')
@@ -273,8 +275,6 @@ class TrainGPT2(object):
           saver.restore(self.sess, ckpt)
         t1 = time.time()
         print('Loaded in %f seconds' % (t1 - t0))
-      self.say('Initializing...')
-      self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
       #global_step.load(current_step, session=session)
       #lr.load(args.learning_rate, session=session)
       self.init = None
