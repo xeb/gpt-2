@@ -164,7 +164,8 @@ class TrainGPT2(object):
           config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
       session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
 
-    with session.as_default():
+    self.graph = tf.Graph()
+    with session.as_default(), self.graph.as_default():
       cores = session.list_devices()[2:]
       core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
       #with tf.device(core):
@@ -252,59 +253,60 @@ class TrainGPT2(object):
     return self.lr.eval(session=self.sess)
 
   def fit(self):
-    if self.init is not None:
-      self.say('Initializing...')
-      self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
-      args = self.args
-      if not args.fresh_model:
-        self.say('Restoring...')
-        saver = self.saver
-        if args.restore_from == 'latest':
-          ckpt = tflex.latest_checkpoint(os.path.join(CHECKPOINT_DIR, args.run_name))
-          if ckpt is None:
-            # Get fresh GPT weights if new run.
-            ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
-        elif args.restore_from == 'fresh':
-          ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
-        else:
-          ckpt = tflex.latest_checkpoint(args.restore_from)
-        print('Loading snapshot %s...' % ckpt)
-        t0 = time.time()
+    with self.sess.as_default(), self.graph.as_default():
+      if self.init is not None:
+        self.say('Initializing...')
+        self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
+        args = self.args
         if not args.fresh_model:
-          saver.restore(self.sess, ckpt)
-        t1 = time.time()
-        print('Loaded in %f seconds' % (t1 - t0))
-      #global_step.load(current_step, session=session)
-      #lr.load(args.learning_rate, session=session)
-      self.init = None
-    v_rate = self.update_lr()
-    self.say('Generating batch...')
-    batch = self.sample_batch()
-    print(repr(self.enc.decode(batch[0]))[0:60] + '...')
-    self.say('Loading context...')
-    self.context.load(batch, session=self.sess)
-    self.say('Running opt_apply...')
-    (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
-    now = time.time()
-    print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.7f} step={step}'
-        .format(
-            stamp=timestamp(),
-            counter=self.counter,
-            time=now - self.start_time,
-            delta=now - self.prev_time,
-            ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
-            rate=v_rate,
-            loss=v_loss,
-            #avg=avg_loss[0] / avg_loss[1],
-            avg=0.0,
-            step=self.current_step,
-            ))
-    self.prev_time = now
-    self.summary_log.add_summary(v_summary, self.counter)
-    self.summary_log.flush()
-    self.counter += 1
-    self.current_step += 1
-    self.global_step.load(self.current_step, session=self.sess)
+          self.say('Restoring...')
+          saver = self.saver
+          if args.restore_from == 'latest':
+            ckpt = tflex.latest_checkpoint(os.path.join(CHECKPOINT_DIR, args.run_name))
+            if ckpt is None:
+              # Get fresh GPT weights if new run.
+              ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
+          elif args.restore_from == 'fresh':
+            ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
+          else:
+            ckpt = tflex.latest_checkpoint(args.restore_from)
+          print('Loading snapshot %s...' % ckpt)
+          t0 = time.time()
+          if not args.fresh_model:
+            saver.restore(self.sess, ckpt)
+          t1 = time.time()
+          print('Loaded in %f seconds' % (t1 - t0))
+        #global_step.load(current_step, session=session)
+        #lr.load(args.learning_rate, session=session)
+        self.init = None
+      v_rate = self.update_lr()
+      self.say('Generating batch...')
+      batch = self.sample_batch()
+      print(repr(self.enc.decode(batch[0]))[0:60] + '...')
+      self.say('Loading context...')
+      self.context.load(batch, session=self.sess)
+      self.say('Running opt_apply...')
+      (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
+      now = time.time()
+      print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.7f} step={step}'
+          .format(
+              stamp=timestamp(),
+              counter=self.counter,
+              time=now - self.start_time,
+              delta=now - self.prev_time,
+              ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
+              rate=v_rate,
+              loss=v_loss,
+              #avg=avg_loss[0] / avg_loss[1],
+              avg=0.0,
+              step=self.current_step,
+              ))
+      self.prev_time = now
+      self.summary_log.add_summary(v_summary, self.counter)
+      self.summary_log.flush()
+      self.counter += 1
+      self.current_step += 1
+      self.global_step.load(self.current_step, session=self.sess)
 
     return v_loss
 
