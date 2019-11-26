@@ -166,9 +166,8 @@ class TrainGPT2(object):
     cores = session.list_devices()[2:]
     core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
 
-    #with session.as_default():
+    with session.as_default():
       #with tf.device(core):
-    if True:
       if True:
         #context = tf.placeholder(tf.int32, [args.batch_size, None])
         context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
