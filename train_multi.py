@@ -164,7 +164,7 @@ class TrainGPT2(object):
           config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
       session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
 
-    with session.as_default(), tf.Graph().as_default():
+    with session.as_default():
       cores = session.list_devices()[2:]
       core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
       #with tf.device(core):
