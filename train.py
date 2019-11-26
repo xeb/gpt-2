@@ -29,7 +29,6 @@ from datetime import datetime, timezone
 CHECKPOINT_DIR = 'checkpoint'
 SAMPLE_DIR = 'samples'
 
-
 parser = argparse.ArgumentParser(
     description='Fine-tune GPT-2 on your custom dataset.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)

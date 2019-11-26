@@ -1,18 +1,18 @@
-"""Byte pair encoding utilities
-
+"""
 Some functions are adapted from OpenAI but with modifications
-
 https://github.com/openai/gpt-2
 """
 
 import os
+import os.path
 import json
 import regex as re
 from functools import lru_cache
 import tensorflow as tf
 import random
 import numpy as np
-
+from glob import glob
+import pathlib as path
 
 @lru_cache()
 def bytes_to_unicode():
@@ -39,7 +39,6 @@ def bytes_to_unicode():
 
 def get_pairs(word):
     """Return set of symbol pairs in a word.
-
     Word is represented as tuple of symbols (symbols being variable-length strings).
     """
     pairs = set()
@@ -171,10 +170,7 @@ def _tokenize_article_pieces(encoder, item):
     Turn the article into tokens
     NOTE: in hindsight I kinda messed up here because the first token is always represented as a BPE continuation
     rather than an initial token in its own right. whoops....
-
     :param item: Contains things that need to be tokenized
-
-
     fields are ['domain', 'date', 'authors', 'title', 'article', 'summary']
     :return: dict
     """
@@ -208,7 +204,6 @@ def _cut_tokens_to_add_stuff(tokens, stuff_to_add, desired_size, padding_token):
     """
     The idea behind this function is to take away tokens from `tokens' such that tokens[:LENGTH] + stuff_to_add becomes
     exactly at the right size (desired_size).
-
     :param tokens:
     :param stuff_to_add:
     :param desired_size:
@@ -231,17 +226,13 @@ def _cut_tokens_to_add_stuff(tokens, stuff_to_add, desired_size, padding_token):
     return tokens
 
 
-def tokenize_for_grover_training(encoder, item, desired_size=1024, unconditional_prob=0.35, metadata_dropout_prob=0.1,
+def tokenize_for_grover_training(encoder, item, desired_size=1025, unconditional_prob=0.35, metadata_dropout_prob=0.1,
                                  cut_prob=0.2):
     """
     Not only will we tokenize an item with a BPE encoder, but we'll also put it in a nice format for language modeling.
     The goal is to MINIMIZE PADDING. If we don't fill up the desired size of 1024 tokens then we're wasting compute.
-
     The canonical order is
-
     DOMAIN DATE AUTHORS TITLE ARTICLE SUMMARY
-
-
     :param encoder:
     :param item: Contains things like
           {"url": "https://www.advocate.com/node/1010911",
@@ -527,15 +518,19 @@ def article_tfrecord_iterator(encoder, input_files, final_desired_size=1025, fol
     
 
 def article_iterator(encoder, input_fn, input_format='auto', **kws):
-  if input_format == 'auto' and input_fn.endswith('.json') or input_format == 'json':
-    for article in article_json_iterator(encoder, input_fn):
-      yield article
-  elif input_format == 'auto' and input_fn.endswith('.tfrecord') or input_format == 'tfrecord':
-    for article in article_tfrecord_iterator(encoder, input_fn):
-      yield article
-  else:
-    for article in article_text_iterator(encoder, input_fn):
-      yield article
+    if input_format == 'auto' and os.path.isdir(input_fn):
+        for input_fn in glob(os.path.join(input_fn, "*")):
+            for article in article_iterator(encoder, input_fn):
+                yield article
+    elif input_format == 'auto' and input_fn.endswith('.json') or input_format == 'json':
+        for article in article_json_iterator(encoder, input_fn):
+            yield article
+    elif input_format == 'auto' and input_fn.endswith('.tfrecord') or input_format == 'tfrecord':
+        for article in article_tfrecord_iterator(encoder, input_fn):
+            yield article
+    else:
+        for article in article_text_iterator(encoder, input_fn):
+            yield article
 
 if __name__ == '__main__':
     encoder = get_encoder()
@@ -545,4 +540,3 @@ if __name__ == '__main__':
     for arg in sys.argv[1:]:
       for article in article_iterator(encoder, arg):
         pprint(article)
-
