@@ -12,6 +12,7 @@ import tensorflow as tf
 import time
 import tqdm
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 
 import model, sample, encoder
@@ -148,13 +149,14 @@ def randomize(context, hparams, p):
         return context
 
 class TrainGPT2(object):
-  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', session=None):
+  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=120000, session=None):
     self.args = args
     self.hparams = hparams
     self.sampler = sampler
     self.enc = enc
     if session is None:
-      config = tf.ConfigProto()
+      config = config_pb2.ConfigProto(operation_timeout_in_ms=timeout)
+      self.timeout = timeout
       #config.allow_soft_placement = True
       if args.allow_growth:
           config.gpu_options.allow_growth = True
@@ -272,7 +274,7 @@ class TrainGPT2(object):
         t1 = time.time()
         print('Loaded in %f seconds' % (t1 - t0))
       self.say('Initializing...')
-      self.sess.run(self.init)
+      self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
       #global_step.load(current_step, session=session)
       #lr.load(args.learning_rate, session=session)
       self.init = None
@@ -283,7 +285,7 @@ class TrainGPT2(object):
     self.say('Loading context...')
     self.context.load(batch, session=self.sess)
     self.say('Running opt_apply...')
-    (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries))
+    (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
     now = time.time()
     print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.7f} step={step}'
         .format(
