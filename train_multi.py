@@ -341,7 +341,7 @@ class TrainGPT2(object):
   def variables(self, index):
     return self.fetch_vars[index % len(self.fetch_vars)]
 
-def update_trainers(all_trainers, i):
+def update_trainers(all_trainers, i, sync_all=False):
   trainers = [x for x in all_trainers if not x.aborted()]
   print('Fetching...')
   accum = {}
@@ -352,45 +352,45 @@ def update_trainers(all_trainers, i):
     if trainer.fresh:
       continue
     def thunk(trainer, lock, index):
-      variables = trainer.variables(index=index)
-      values = trainer.sess.run(variables)
-      try:
-        lock.acquire()
-        for variable, value in zip(variables, values):
-          if variable.name in accum:
-            accum[variable.name] = accum[variable.name] + value
-          else:
-            accum[variable.name] = value
-          accumcount[variable.name] += 1
-      finally:
-        lock.release()
+      for variables in tqdm.tqdm([trainer.variables(index=index)] if not sync_all else trainer.fetch_vars):
+        values = trainer.sess.run(variables)
+        try:
+          lock.acquire()
+          for variable, value in zip(variables, values):
+            if variable.name in accum:
+              accum[variable.name] = accum[variable.name] + value
+            else:
+              accum[variable.name] = value
+            accumcount[variable.name] += 1
+        finally:
+          lock.release()
     thread = threading.Thread(target=thunk, args=(trainer,lock,i,))
     thread.start()
     threads.append(thread)
-  for thread in tqdm.tqdm(threads):
+  for thread in threads:
     thread.join()
   print('Synchronizing...')
   threads = []
   for trainer in trainers:
     def thunk(trainer, index):
-      variables = trainer.variables(index=index)
-      values = []
-      for v in variables:
-        assert(v.name in accum)
-        value = accum[v.name]
-        n = accumcount[v.name]
-        assert(n > 0)
-        values.append(value / n)
-      tflex.assign_values(variables, values, session=trainer.sess)
-      trainer.fresh = False
-      #trainer.avg_loss[0] = avg_loss[0] / avg_count
-      #trainer.avg_loss[1] = avg_loss[1] / avg_count
-      #trainer.avg_perp[0] = avg_perp[0] / avg_count
-      #trainer.avg_perp[1] = avg_perp[1] / avg_count
+      for variables in tqdm.tqdm([trainer.variables(index=index)] if not sync_all else trainer.fetch_vars):
+        values = []
+        for v in variables:
+          assert(v.name in accum)
+          value = accum[v.name]
+          n = accumcount[v.name]
+          assert(n > 0)
+          values.append(value / n)
+        tflex.assign_values(variables, values, session=trainer.sess)
+        trainer.fresh = False
+        #trainer.avg_loss[0] = avg_loss[0] / avg_count
+        #trainer.avg_loss[1] = avg_loss[1] / avg_count
+        #trainer.avg_perp[0] = avg_perp[0] / avg_count
+        #trainer.avg_perp[1] = avg_perp[1] / avg_count
     thread = threading.Thread(target=thunk, args=(trainer,i,))
     thread.start()
     threads.append(thread)
-  for thread in tqdm.tqdm(threads):
+  for thread in threads:
     thread.join()
   print('Synchronized.')
 
@@ -482,7 +482,7 @@ def main():
         threads.append(thread)
       for thread in threads:
         thread.join()
-      update_trainers(trainers, i - 1)
+      update_trainers(trainers, i - 1, sync_all=(i == 1))
       print('All done', i)
       #if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
       #  def sync():
