@@ -394,7 +394,7 @@ def main():
         thread.join()
       print('All done', i)
       if i % 10 == 0:
-        def thunk():
+        def sync():
           print('Fetching...')
           accum = {}
           accumcount = defaultdict(int)
@@ -437,7 +437,7 @@ def main():
           for thread in threads:
             thread.join()
           print('Synchronized.')
-      thread = threading.Thread(target=thunk, args=())
+      thread = threading.Thread(target=sync, args=())
       thread.start()
 
 if __name__ == '__main__':
