@@ -341,9 +341,9 @@ class TrainGPT2(object):
   def variables(self, index):
     return self.fetch_vars[index % len(self.fetch_vars)]
 
-def update_trainers(all_trainers, i, sync_all=False):
-  trainers = [x for x in all_trainers if not x.aborted()]
-  print('Fetching...')
+def update_trainers(trainers, i, sync_all=False):
+  #trainers = [x for x in all_trainers if not x.aborted()]
+  #print('Fetching...')
   accum = {}
   accumcount = defaultdict(int)
   lock = threading.Lock()
@@ -352,7 +352,7 @@ def update_trainers(all_trainers, i, sync_all=False):
     if trainer.fresh:
       continue
     def thunk(trainer, lock, index):
-      for variables in tqdm.tqdm([trainer.variables(index=index)] if not sync_all else trainer.fetch_vars):
+      for variables in ([trainer.variables(index=index)] if not sync_all else trainer.fetch_vars):
         values = trainer.sess.run(variables)
         try:
           lock.acquire()
@@ -369,11 +369,11 @@ def update_trainers(all_trainers, i, sync_all=False):
     threads.append(thread)
   for thread in threads:
     thread.join()
-  print('Synchronizing...')
+  #print('Synchronizing...')
   threads = []
   for trainer in trainers:
     def thunk(trainer, index):
-      for variables in tqdm.tqdm([trainer.variables(index=index)] if not sync_all else trainer.fetch_vars):
+      for variables in ([trainer.variables(index=index)] if not sync_all else trainer.fetch_vars):
         values = []
         for v in variables:
           assert(v.name in accum)
@@ -392,7 +392,7 @@ def update_trainers(all_trainers, i, sync_all=False):
     threads.append(thread)
   for thread in threads:
     thread.join()
-  print('Synchronized.')
+  #print('Synchronized.')
 
 
 
@@ -467,6 +467,7 @@ def main():
           yield trainer
     i = 0
     sync_thread = None
+    first = True
     while True:
       tflex.check_commands()
       if tflex.should_quit():
@@ -475,14 +476,30 @@ def main():
       print('Fitting...', i)
       threads = []
       for trainer in get_trainers():
-        def thunk(trainer):
-          trainer.fit()
-        thread = threading.Thread(target=thunk, args=(trainer,))
+        def thunk(trainer, n):
+          for _ in range(n):
+            trainer.fit()
+        count = 1 if first else 10
+        thread = threading.Thread(target=thunk, args=(trainer,count))
         thread.start()
         threads.append(thread)
       for thread in threads:
         thread.join()
-      update_trainers(trainers, i - 1, sync_all=(i == 1))
+      if first:
+        update_trainers(trainers, i - 1, sync_all=first)
+      else:
+        threads = []
+        if len(all_trainers) > 0:
+          batches = len(all_trainers[0].fetch_vars)
+          for index in range(batches):
+            def thunk(trainers, index):
+              update_trainers(trainers, index)
+            thread = threading.Thread(target=thunk, args=(all_trainers, index))
+            thread.start()
+            threads.append(thread)
+        for thread in tqdm.tqdm(threads):
+          thread.join()
+      first = False
       print('All done', i)
       #if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
       #  def sync():
