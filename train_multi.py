@@ -417,9 +417,12 @@ def main():
           accumcount = defaultdict(int)
           lock = threading.Lock()
           threads = []
-          for trainer in trainers if i > 1 else [trainers[0]]:
+          first = i == 1
+          for trainer in trainers if not first else [trainers[0]]:
             def thunk(trainer):
-              for variables, values in trainer.saver.fetch(trainer.sess, var_list=trainer.global_vars):
+              #var_list = trainer.global_vars if first else trainer.train_vars
+              var_list = trainer.global_vars
+              for variables, values in trainer.saver.fetch(trainer.sess, var_list=var_list):
                 try:
                   lock.acquire()
                   for variable, value in zip(variables, values):
@@ -444,7 +447,9 @@ def main():
           threads = []
           for trainer in trainers:
             def thunk(trainer):
-              for variables in trainer.saver.variables(trainer.sess, var_list=trainer.global_vars):
+              #var_list = trainer.global_vars if first else trainer.train_vars
+              var_list = trainer.global_vars
+              for variables in trainer.saver.variables(trainer.sess, var_list=var_list):
                 values = []
                 for v in variables:
                   assert(v.name in accum)
