@@ -109,7 +109,8 @@ def nextchars(f, n):
     c = nextchar(f)
     if c is None:
       break
-    s += c
+    if c != u'\r':
+      s += c
   if len(s) > 0:
     return s
 
