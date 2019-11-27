@@ -15,6 +15,7 @@ import math
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework.errors_impl import InvalidArgumentError, AbortedError
 
 import model, sample, encoder
 from load_dataset import load_dataset, Sampler, TextSampler
@@ -152,7 +153,8 @@ def randomize(context, hparams, p):
         return context
 
 class TrainGPT2(object):
-  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=120000, session=None):
+  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=60000, session=None):
+    self.fresh = True
     self.args = args
     self.hparams = hparams
     self.sampler = sampler
@@ -247,6 +249,14 @@ class TrainGPT2(object):
     self.start_time = time.time()
     self.prev_time = self.start_time
     
+  def aborted(self):
+    try:
+      self.sess.list_devices()
+      return False
+    except InvalidArgumentError:
+      return True
+    except AbortedError:
+      return True
 
   def sample_batch(self):
     args = self.args
@@ -390,6 +400,11 @@ def main():
     if len(targets) <= 0:
       targets.append('auto')
     trainers = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target) for target in targets]
+    trainers[0].fresh = False
+    def get_trainers():
+      for trainer in trainers:
+        if not trainer.aborted():
+          yield trainer
     i = 0
     sync_thread = None
     while True:
@@ -398,7 +413,7 @@ def main():
         break
       i += 1
       threads = []
-      for trainer in trainers:
+      for trainer in get_trainers():
         def thunk(trainer):
           trainer.fit()
         thread = threading.Thread(target=thunk, args=(trainer,))
@@ -407,7 +422,7 @@ def main():
       for thread in threads:
         thread.join()
       print('All done', i)
-      if len(trainers) > 1 and (i % 10 == 0 or i == 1):
+      if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
         def sync():
           print('Fetching...')
           avg_loss = [0.0, 0.0]
@@ -418,7 +433,9 @@ def main():
           lock = threading.Lock()
           threads = []
           first = i == 1
-          for trainer in trainers if not first else [trainers[0]]:
+          for trainer in get_trainers():
+            if trainer.fresh:
+              continue
             def thunk(trainer, lock):
               #var_list = trainer.global_vars if first else trainer.train_vars
               var_list = trainer.global_vars
@@ -446,7 +463,7 @@ def main():
             thread.join()
           print('Synchronizing...')
           threads = []
-          for trainer in trainers:
+          for trainer in get_trainers():
             def thunk(trainer):
               #var_list = trainer.global_vars if first else trainer.train_vars
               var_list = trainer.global_vars
@@ -459,6 +476,7 @@ def main():
                   assert(n > 0)
                   values.append(value / n)
                 trainer.saver.assign(trainer.sess, variables, values)
+                trainer.fresh = False
                 #trainer.avg_loss[0] = avg_loss[0] / avg_count
                 #trainer.avg_loss[1] = avg_loss[1] / avg_count
                 #trainer.avg_perp[0] = avg_perp[0] / avg_count
