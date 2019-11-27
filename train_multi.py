@@ -154,6 +154,7 @@ class TrainGPT2(object):
     self.args = args
     self.hparams = hparams
     self.sampler = sampler
+    self.target = target
     self.enc = enc
     if session is None:
       config = config_pb2.ConfigProto(operation_timeout_in_ms=timeout)
@@ -213,7 +214,7 @@ class TrainGPT2(object):
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summaries = tf.summary.merge([summary_lr, summary_loss])
       self.summary_log = tf.summary.FileWriter(
-            os.path.join(CHECKPOINT_DIR, args.run_name))
+            os.path.join(CHECKPOINT_DIR, args.run_name + "_" + self.target))
       self.summaries = summaries
       self.loss = loss
       self.context = context
