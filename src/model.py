@@ -61,9 +61,11 @@ def norm(x, scope, *, axis=-1, epsilon=1e-5, hparams=None):
         b = get_variable('b') or tf.get_variable('b', [n_state], initializer=tf.constant_initializer(0, dtype=dtype))
         u = tf.reduce_mean(x, axis=axis, keepdims=True)
         s = tf.reduce_mean(tf.square(x-u), axis=axis, keepdims=True)
-        s = s + tf.cast(epsilon, x.dtype)
-        s = tf.cast(s, x.dtype)
-        s = tf.rsqrt(s)
+        s = s + tf.cast(epsilon, dtype)
+        s = tf.cast(s, dtype)
+        s = tf.sqrt(s)
+        s = tf.cast(s, tf.float32)
+        s = tf.cast(1.0, tf.float32) / s
         x = (x - u) * s
         x = x*g + b
         return x
