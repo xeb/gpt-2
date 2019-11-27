@@ -382,7 +382,7 @@ def update_trainers(trainers, i, sync_all=False):
           assert(n > 0)
           values.append(value / n)
         tflex.assign_values(variables, values, session=trainer.sess)
-        trainer.fresh = False
+        #trainer.fresh = False
         #trainer.avg_loss[0] = avg_loss[0] / avg_count
         #trainer.avg_loss[1] = avg_loss[1] / avg_count
         #trainer.avg_perp[0] = avg_perp[0] / avg_count
@@ -485,20 +485,21 @@ def main():
         threads.append(thread)
       for thread in threads:
         thread.join()
-      if first:
-        update_trainers(trainers, i - 1, sync_all=first)
-      else:
-        threads = []
-        if len(all_trainers) > 0:
-          batches = len(all_trainers[0].fetch_vars)
-          for index in range(batches):
-            def thunk(trainers, index):
-              update_trainers(trainers, index)
-            thread = threading.Thread(target=thunk, args=(all_trainers, index))
-            thread.start()
-            threads.append(thread)
-        for thread in tqdm.tqdm(threads):
-          thread.join()
+      print('Synchronizing...', i)
+      threads = []
+      all_trainers = list(get_trainers())
+      if len(all_trainers) > 0:
+        batches = len(all_trainers[0].fetch_vars)
+        for index in range(batches):
+          def thunk(trainers, index):
+            update_trainers(trainers, index)
+          thread = threading.Thread(target=thunk, args=(all_trainers, index))
+          thread.start()
+          threads.append(thread)
+      for thread in tqdm.tqdm(threads):
+        thread.join()
+      for trainer in all_trainers:
+        trainer.fresh = False
       first = False
       print('All done', i)
       #if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
