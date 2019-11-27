@@ -284,7 +284,7 @@ class TrainGPT2(object):
       v_rate = self.update_lr()
       self.say('Generating batch...')
       batch = self.sample_batch()
-      print(repr(self.enc.decode(batch[0]))[0:60] + '...')
+      print(repr(self.enc.decode(batch[0]))[0:150] + '...')
       self.say('Loading context...')
       self.context.load(batch, session=self.sess)
       self.say('Running opt_apply...')
