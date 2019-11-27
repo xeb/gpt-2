@@ -504,7 +504,7 @@ def main():
           yield trainer
     print("Warming up...")
     def warmup(trainer):
-      while trainer.counter.value < 50:
+      while trainer.current_step.value < 50:
         trainer.fit()
     for thread in tqdm.tqdm(parallelize(get_trainers(), warmup)):
       thread.join()
