@@ -390,7 +390,7 @@ def main():
       for thread in threads:
         thread.join()
       print('All done', i)
-      if i % 10 == 0:
+      if i % 25 == 0:
         print('Fetching...')
         accum = {}
         accumcount = defaultdict(int)
