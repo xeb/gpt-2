@@ -204,7 +204,6 @@ class TrainGPT2(object):
         else:
           exit('Bad optimizer:', args.optimizer)
 
-        global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
         all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
         train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
 
@@ -216,6 +215,7 @@ class TrainGPT2(object):
         opt_apply = opt.apply_gradients(opt_grads)
         summary_loss = tf.summary.scalar('loss', loss)
         summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
+        global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
