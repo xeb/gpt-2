@@ -160,7 +160,7 @@ class TrainGPT2(object):
     if session is None:
       config = config_pb2.ConfigProto(operation_timeout_in_ms=timeout)
       self.timeout = timeout
-      #config.allow_soft_placement = True
+      config.allow_soft_placement = True
       if args.allow_growth:
           config.gpu_options.allow_growth = True
       if args.disable_layout_optimizer:
