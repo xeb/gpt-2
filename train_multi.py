@@ -419,7 +419,7 @@ def main():
           threads = []
           first = i == 1
           for trainer in trainers if not first else [trainers[0]]:
-            def thunk(trainer):
+            def thunk(trainer, lock):
               #var_list = trainer.global_vars if first else trainer.train_vars
               var_list = trainer.global_vars
               for variables, values in trainer.saver.fetch(trainer.sess, var_list=var_list):
@@ -439,7 +439,7 @@ def main():
                   avg_perp[1] += trainer.avg_perp[1]
                 finally:
                   lock.release()
-            thread = threading.Thread(target=thunk, args=(trainer,))
+            thread = threading.Thread(target=thunk, args=(trainer,lock,))
             thread.start()
             threads.append(thread)
           for thread in threads:
