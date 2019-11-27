@@ -152,8 +152,21 @@ def randomize(context, hparams, p):
     else:
         return context
 
+class TrainCounter(object):
+  def __init__(self, value=0):
+    self.value = value
+    self.lock = threading.Lock()
+
+  def incr(self, n=1):
+    try:
+      self.lock.acquire()
+      self.value += n
+      return self.value
+    finally:
+      self.lock.release()
+
 class TrainGPT2(threading.Thread):
-  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=120000, session=None):
+  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=120000, session=None, counter=None):
     super(TrainGPT2, self).__init__()
     self.fresh = True
     self.args = args
@@ -188,7 +201,7 @@ class TrainGPT2(threading.Thread):
 
       with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
         global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
-        current_step = args.learning_rate_initial_step
+        current_step = counter
         lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
 
         use_locking=False
@@ -241,7 +254,7 @@ class TrainGPT2(threading.Thread):
       self.opt_apply = opt_apply
       self.sess = session
       self.lr = lr
-      self.counter = 1
+      self.counter = current_step.incr()
       self.stopped = False
       self.current_step = current_step
       self.global_step = global_step
@@ -338,14 +351,13 @@ class TrainGPT2(threading.Thread):
               perp=v_perp,
               avgloss=self.avg_loss[0] / self.avg_loss[1],
               avgperp=self.avg_perp[0] / self.avg_perp[1],
-              step=self.current_step,
+              step=self.counter,
               ))
       self.prev_time = now
       self.summary_log.add_summary(v_summary, self.counter)
       self.summary_log.flush()
-      self.counter += 1
-      self.current_step += 1
-      self.global_step.load(self.current_step, session=self.sess)
+      self.counter = self.current_step.incr()
+      self.global_step.load(self.counter, session=self.sess)
 
     return v_loss
 
@@ -478,7 +490,8 @@ def main():
     targets = [x.strip() for x in args.targets.split(',') if len(x.strip()) > 0]
     if len(targets) <= 0:
       targets.append('auto')
-    trainers = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target) for target in targets]
+    traincounter = TrainCounter(value=args.learning_rate_initial_step)
+    trainers = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter) for target in targets]
     trainers[0].fresh = False
     def get_trainers():
       for trainer in trainers:
