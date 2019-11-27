@@ -402,7 +402,7 @@ def main():
       for thread in threads:
         thread.join()
       print('All done', i)
-      if i % 10 == 0:
+      if len(trainers) > 1 and i % 10 == 0:
         def sync():
           print('Fetching...')
           accum = {}
