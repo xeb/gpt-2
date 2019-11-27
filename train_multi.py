@@ -450,6 +450,7 @@ def main():
           print('Synchronized.')
         thread = threading.Thread(target=sync, args=())
         thread.start()
+        thread.join()
 
 if __name__ == '__main__':
     main()
