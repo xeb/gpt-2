@@ -376,7 +376,7 @@ def main():
     targets = [x.strip() for x in args.targets.split(',') if len(x.strip()) > 0]
     if len(targets) <= 0:
       targets.append('auto')
-    local.train = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target) for target in targets]
+    trainers = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target) for target in targets]
     i = 0
     while True:
       tflex.check_commands()
@@ -384,7 +384,7 @@ def main():
         break
       i += 1
       threads = []
-      for trainer in local.train:
+      for trainer in trainers:
         def thunk(trainer):
           trainer.fit()
         thread = threading.Thread(target=thunk, args=(trainer,))
@@ -400,7 +400,7 @@ def main():
           accumcount = defaultdict(int)
           lock = threading.Lock()
           threads = []
-          for trainer in local.train:
+          for trainer in trainers:
             def thunk(trainer):
               for variables, values in trainer.saver.fetch(trainer.sess):
                 try:
@@ -420,7 +420,7 @@ def main():
             thread.join()
           print('Synchronizing...')
           threads = []
-          for trainer in local.train:
+          for trainer in trainers:
             def thunk(trainer):
               for variables in trainer.saver.variables(trainer.sess):
                 values = []
