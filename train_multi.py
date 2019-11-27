@@ -410,6 +410,9 @@ def main():
       if len(trainers) > 1 and (i % 10 == 0 or i == 1):
         def sync():
           print('Fetching...')
+          avg_loss = (0.0, 0.0)
+          avg_perp = (0.0, 0.0)
+          avg_count = 0
           accum = {}
           accumcount = defaultdict(int)
           lock = threading.Lock()
@@ -425,6 +428,11 @@ def main():
                     else:
                       accum[variable.name] = value
                     accumcount[variable.name] += 1
+                  avg_count += 1
+                  avg_loss[0] += trainer.avg_loss[0]
+                  avg_loss[1] += trainer.avg_loss[1]
+                  avg_perp[0] += trainer.avg_perp[0]
+                  avg_perp[1] += trainer.avg_perp[1]
                 finally:
                   lock.release()
             thread = threading.Thread(target=thunk, args=(trainer,))
@@ -445,6 +453,10 @@ def main():
                   assert(n > 0)
                   values.append(value / n)
                 trainer.saver.assign(trainer.sess, variables, values)
+                trainer.avg_loss[0] = avg_loss[0] / avg_count
+                trainer.avg_loss[1] = avg_loss[1] / avg_count
+                trainer.avg_perp[0] = avg_perp[0] / avg_count
+                trainer.avg_perp[1] = avg_perp[1] / avg_count
             thread = threading.Thread(target=thunk, args=(trainer,))
             thread.start()
             threads.append(thread)
