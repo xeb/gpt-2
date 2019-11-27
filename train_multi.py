@@ -233,6 +233,7 @@ class TrainGPT2(object):
             keep_checkpoint_every_n_hours=2,
             reshape=args.truncate_weights)
       self.init = tf.global_variables_initializer()
+      self.avg_loss = (0.0, 0.0)
     self.start_time = time.time()
     self.prev_time = self.start_time
     
@@ -296,13 +297,14 @@ class TrainGPT2(object):
               ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
               rate=v_rate,
               loss=v_loss,
-              #avg=avg_loss[0] / avg_loss[1],
-              avg=0.0,
+              avg=avg_loss[0] / avg_loss[1],
               step=self.current_step,
               ))
       self.prev_time = now
       self.summary_log.add_summary(v_summary, self.counter)
       self.summary_log.flush()
+      self.avg_loss = (self.avg_loss[0] * 0.99 + v_loss,
+                       self.avg_loss[1] * 0.99 + 1.0)
       self.counter += 1
       self.current_step += 1
       self.global_step.load(self.current_step, session=self.sess)
