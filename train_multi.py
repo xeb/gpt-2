@@ -221,7 +221,8 @@ class TrainGPT2(threading.Thread):
         summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
         global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
         #fetch_vars = list(tflex.split_by_params(global_vars))
-        fetch_vars = list(tflex.split_by_params(train_vars))
+        #fetch_vars = list(tflex.split_by_params(train_vars))
+        fetch_vars = list(tflex.split_by_params(all_vars))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
