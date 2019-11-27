@@ -401,7 +401,7 @@ def main():
       for thread in threads:
         thread.join()
       print('All done')
-      print('Summing...')
+      print('Synchronizing...')
       for k, v in accum.items():
         n = accumcount[k]
         assert(n > 0)
@@ -409,12 +409,18 @@ def main():
       threads = []
       for trainer in local.train:
         def thunk(trainer):
-          pass
+          for variables in trainer.saver.variables(trainer.sess):
+            values = []
+            for v in variables:
+              assert(v.name in accum)
+              values.append(accum[v.name])
+            trainer.saver.assign(trainer.sess, variables, values)
         thread = threading.Thread(target=thunk, args=(trainer,))
         thread.start()
         threads.append(thread)
       for thread in threads:
         thread.join()
+      print('Synchronized.')
       tflex.check_commands()
       if tflex.should_quit():
         break

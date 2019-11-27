@@ -164,6 +164,12 @@ def fetch_variables(session=None, var_list=None):
       values = session.run(variables)
       yield variables, values
 
+def partition_variables(session=None, var_list=None):
+    session = session or tf.get_default_session()
+    vs = var_list or tf.trainable_variables()
+    for variables in tqdm.tqdm(list(split_by_params(vs))):
+      yield variables
+
 class Saver(object):
   def __init__(
     self,
@@ -242,6 +248,13 @@ class Saver(object):
   def fetch(self, sess):
     for variables, values in fetch_variables(session=sess, var_list=self.var_list):
       yield variables, values
+
+  def variables(self, sess):
+    for variables in partition_variables(session=sess, var_list=self.var_list):
+      yield variables
+
+  def assign(self, sess, variables, values):
+    return assign_values(variables, values, session=sess)
 
 class Commands(object):
   def __init__(self, path='commands'):
