@@ -178,7 +178,7 @@ class TrainGPT2(object):
             labels=context[:, 1:], logits=output['logits'][:, :-1]))
 
       all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
-      train_vars = [v for v in all_vars if '/h' in v.name] if args.only_train_transformer_layers else all_vars
+      train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
 
       parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
       print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
