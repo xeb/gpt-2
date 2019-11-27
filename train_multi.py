@@ -218,6 +218,7 @@ class TrainGPT2(object):
         summary_loss = tf.summary.scalar('loss', loss)
         summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
         global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
+        fetch_vars = list(tflex.split_by_params(global_vars))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
@@ -228,9 +229,10 @@ class TrainGPT2(object):
       self.context = context
       self.output = output
       self.opt = opt
-      self.global_vars = global_vars
       self.all_vars = all_vars
       self.train_vars = train_vars
+      self.global_vars = global_vars
+      self.fetch_vars = fetch_vars
       self.opt_grads = opt_grads
       self.opt_apply = opt_apply
       self.sess = session
@@ -336,6 +338,64 @@ class TrainGPT2(object):
 
     return v_loss
 
+  def variables(self, index):
+    return self.fetch_vars[index % len(self.fetch_vars)]
+
+def update_trainers(all_trainers, i):
+  trainers = [x for x in all_trainers if not x.aborted()]
+  print('Fetching...')
+  accum = {}
+  accumcount = defaultdict(int)
+  lock = threading.Lock()
+  threads = []
+  for trainer in trainers:
+    if trainer.fresh:
+      continue
+    def thunk(trainer, lock, index):
+      variables = trainer.variables(index=index)
+      values = trainer.sess.run(variables)
+      try:
+        lock.acquire()
+        for variable, value in zip(variables, values):
+          if variable.name in accum:
+            accum[variable.name] = accum[variable.name] + value
+          else:
+            accum[variable.name] = value
+          accumcount[variable.name] += 1
+      finally:
+        lock.release()
+    thread = threading.Thread(target=thunk, args=(trainer,lock,i,))
+    thread.start()
+    threads.append(thread)
+  for thread in tqdm.tqdm(threads):
+    thread.join()
+  print('Synchronizing...')
+  threads = []
+  for trainer in trainers:
+    def thunk(trainer, index):
+      variables = trainer.variables(index=index)
+      values = []
+      for v in variables:
+        assert(v.name in accum)
+        value = accum[v.name]
+        n = accumcount[v.name]
+        assert(n > 0)
+        values.append(value / n)
+      tflex.assign_values(variables, values, session=trainer.sess)
+      trainer.fresh = False
+      #trainer.avg_loss[0] = avg_loss[0] / avg_count
+      #trainer.avg_loss[1] = avg_loss[1] / avg_count
+      #trainer.avg_perp[0] = avg_perp[0] / avg_count
+      #trainer.avg_perp[1] = avg_perp[1] / avg_count
+    thread = threading.Thread(target=thunk, args=(trainer,i,))
+    thread.start()
+    threads.append(thread)
+  for thread in tqdm.tqdm(threads):
+    thread.join()
+  print('Synchronized.')
+
+
+
 def main():
     args = parser.parse_args()
     enc = encoder.get_encoder(args.model_name)
@@ -412,6 +472,7 @@ def main():
       if tflex.should_quit():
         break
       i += 1
+      print('Fitting...', i)
       threads = []
       for trainer in get_trainers():
         def thunk(trainer):
@@ -421,79 +482,80 @@ def main():
         threads.append(thread)
       for thread in threads:
         thread.join()
+      update_trainers(trainers, i - 1)
       print('All done', i)
-      if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
-        def sync():
-          print('Fetching...')
-          avg_loss = [0.0, 0.0]
-          avg_perp = [0.0, 0.0]
-          avg_count = 0
-          accum = {}
-          accumcount = defaultdict(int)
-          lock = threading.Lock()
-          threads = []
-          first = i == 1
-          for trainer in get_trainers():
-            if trainer.fresh:
-              continue
-            def thunk(trainer, lock):
-              #var_list = trainer.global_vars if first else trainer.train_vars
-              var_list = trainer.global_vars
-              for variables, values in trainer.saver.fetch(trainer.sess, var_list=var_list):
-                try:
-                  lock.acquire()
-                  for variable, value in zip(variables, values):
-                    if variable.name in accum:
-                      accum[variable.name] = accum[variable.name] + value
-                    else:
-                      accum[variable.name] = value
-                    accumcount[variable.name] += 1
-                  nonlocal avg_count
-                  avg_count += 1
-                  avg_loss[0] += trainer.avg_loss[0]
-                  avg_loss[1] += trainer.avg_loss[1]
-                  avg_perp[0] += trainer.avg_perp[0]
-                  avg_perp[1] += trainer.avg_perp[1]
-                finally:
-                  lock.release()
-            thread = threading.Thread(target=thunk, args=(trainer,lock,))
-            thread.start()
-            threads.append(thread)
-          for thread in threads:
-            thread.join()
-          print('Synchronizing...')
-          threads = []
-          for trainer in get_trainers():
-            def thunk(trainer):
-              #var_list = trainer.global_vars if first else trainer.train_vars
-              var_list = trainer.global_vars
-              for variables in trainer.saver.variables(trainer.sess, var_list=var_list):
-                values = []
-                for v in variables:
-                  assert(v.name in accum)
-                  value = accum[v.name]
-                  n = accumcount[v.name]
-                  assert(n > 0)
-                  values.append(value / n)
-                trainer.saver.assign(trainer.sess, variables, values)
-                trainer.fresh = False
-                #trainer.avg_loss[0] = avg_loss[0] / avg_count
-                #trainer.avg_loss[1] = avg_loss[1] / avg_count
-                #trainer.avg_perp[0] = avg_perp[0] / avg_count
-                #trainer.avg_perp[1] = avg_perp[1] / avg_count
-            thread = threading.Thread(target=thunk, args=(trainer,))
-            thread.start()
-            threads.append(thread)
-          for thread in threads:
-            thread.join()
-          print('Synchronized.')
-        if sync_thread:
-          sync_thread.join()
-        sync_thread = threading.Thread(target=sync, args=())
-        sync_thread.start()
-        if i == 1:
-          sync_thread.join()
-          sync_thread = None
+      #if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
+      #  def sync():
+      #    print('Fetching...')
+      #    avg_loss = [0.0, 0.0]
+      #    avg_perp = [0.0, 0.0]
+      #    avg_count = 0
+      #    accum = {}
+      #    accumcount = defaultdict(int)
+      #    lock = threading.Lock()
+      #    threads = []
+      #    first = i == 1
+      #    for trainer in get_trainers():
+      #      if trainer.fresh:
+      #        continue
+      #      def thunk(trainer, lock):
+      #        #var_list = trainer.global_vars if first else trainer.train_vars
+      #        var_list = trainer.global_vars
+      #        for variables, values in trainer.saver.fetch(trainer.sess, var_list=var_list):
+      #          try:
+      #            lock.acquire()
+      #            for variable, value in zip(variables, values):
+      #              if variable.name in accum:
+      #                accum[variable.name] = accum[variable.name] + value
+      #              else:
+      #                accum[variable.name] = value
+      #              accumcount[variable.name] += 1
+      #            nonlocal avg_count
+      #            avg_count += 1
+      #            avg_loss[0] += trainer.avg_loss[0]
+      #            avg_loss[1] += trainer.avg_loss[1]
+      #            avg_perp[0] += trainer.avg_perp[0]
+      #            avg_perp[1] += trainer.avg_perp[1]
+      #          finally:
+      #            lock.release()
+      #      thread = threading.Thread(target=thunk, args=(trainer,lock,))
+      #      thread.start()
+      #      threads.append(thread)
+      #    for thread in threads:
+      #      thread.join()
+      #    print('Synchronizing...')
+      #    threads = []
+      #    for trainer in get_trainers():
+      #      def thunk(trainer):
+      #        #var_list = trainer.global_vars if first else trainer.train_vars
+      #        var_list = trainer.global_vars
+      #        for variables in trainer.saver.variables(trainer.sess, var_list=var_list):
+      #          values = []
+      #          for v in variables:
+      #            assert(v.name in accum)
+      #            value = accum[v.name]
+      #            n = accumcount[v.name]
+      #            assert(n > 0)
+      #            values.append(value / n)
+      #          trainer.saver.assign(trainer.sess, variables, values)
+      #          trainer.fresh = False
+      #          #trainer.avg_loss[0] = avg_loss[0] / avg_count
+      #          #trainer.avg_loss[1] = avg_loss[1] / avg_count
+      #          #trainer.avg_perp[0] = avg_perp[0] / avg_count
+      #          #trainer.avg_perp[1] = avg_perp[1] / avg_count
+      #      thread = threading.Thread(target=thunk, args=(trainer,))
+      #      thread.start()
+      #      threads.append(thread)
+      #    for thread in threads:
+      #      thread.join()
+      #    print('Synchronized.')
+      #  if sync_thread:
+      #    sync_thread.join()
+      #  sync_thread = threading.Thread(target=sync, args=())
+      #  sync_thread.start()
+      #  if i == 1:
+      #    sync_thread.join()
+      #    sync_thread = None
 
 
 if __name__ == '__main__':
