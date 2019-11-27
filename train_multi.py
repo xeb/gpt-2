@@ -204,7 +204,7 @@ class TrainGPT2(threading.Thread):
           ada_hparams = registry.hparams('afx_mimic_adam')
           ada_hparams.optimizer_adafactor_beta1 = 0.0
           ada_hparams.optimizer_adafactor_factored = True
-          opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams, use_locking=use_locking)
+          opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
         else:
           exit('Bad optimizer:', args.optimizer)
 
