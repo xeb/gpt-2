@@ -153,7 +153,7 @@ def randomize(context, hparams, p):
         return context
 
 class TrainGPT2(object):
-  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=60000, session=None):
+  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=120000, session=None):
     self.fresh = True
     self.args = args
     self.hparams = hparams
