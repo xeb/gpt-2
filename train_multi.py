@@ -402,10 +402,6 @@ def main():
         thread.join()
       print('All done')
       print('Synchronizing...')
-      for k, v in accum.items():
-        n = accumcount[k]
-        assert(n > 0)
-        v = v / n
       threads = []
       for trainer in local.train:
         def thunk(trainer):
@@ -413,7 +409,10 @@ def main():
             values = []
             for v in variables:
               assert(v.name in accum)
-              values.append(accum[v.name])
+              value = accum[v.name]
+              n = accumcount[v.name]
+              assert(n > 0)
+              values.append(value / n)
             trainer.saver.assign(trainer.sess, variables, values)
         thread = threading.Thread(target=thunk, args=(trainer,))
         thread.start()
