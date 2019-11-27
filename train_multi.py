@@ -15,7 +15,7 @@ import math
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework.errors_impl import InvalidArgumentError, AbortedError
+from tensorflow.python.framework.errors_impl import InvalidArgumentError, AbortedError, DeadlineExceededError
 
 import model, sample, encoder
 from load_dataset import load_dataset, Sampler, TextSampler
@@ -262,6 +262,8 @@ class TrainGPT2(threading.Thread):
     except InvalidArgumentError:
       return True
     except AbortedError:
+      return True
+    except DeadlineExceededError:
       return True
 
   def sample_batch(self):
