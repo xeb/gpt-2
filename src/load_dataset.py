@@ -105,12 +105,14 @@ def nextchar(f):
 
 def nextchars(f, n):
   s = ""
-  for i in range(n):
+  i = 0
+  while i < n:
     c = nextchar(f)
     if c is None:
       break
     if c != u'\r':
       s += c
+      i += 1
   if len(s) > 0:
     return s
 
