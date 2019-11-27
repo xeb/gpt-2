@@ -210,9 +210,10 @@ class TrainGPT2(object):
         opt_grads = list(zip(opt_grads, train_vars))
         opt_apply = opt.apply_gradients(opt_grads)
         summary_loss = tf.summary.scalar('loss', loss)
+        summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
-      summaries = tf.summary.merge([summary_lr, summary_loss])
+      summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
       self.summary_log = tf.summary.FileWriter(
             os.path.join(CHECKPOINT_DIR, args.run_name + "_" + self.target))
       self.summaries = summaries
@@ -236,6 +237,7 @@ class TrainGPT2(object):
             reshape=args.truncate_weights)
       self.init = tf.global_variables_initializer()
       self.avg_loss = (0.0, 0.0)
+      self.avg_perp = (0.0, 0.0)
     self.start_time = time.time()
     self.prev_time = self.start_time
     
@@ -289,10 +291,13 @@ class TrainGPT2(object):
       self.context.load(batch, session=self.sess)
       self.say('Running opt_apply...')
       (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
-      self.avg_loss = (self.avg_loss[0] * 0.9 + v_loss,
-                       self.avg_loss[1] * 0.9 + 1.0)
+      v_perp = math.exp(v_loss)
+      self.avg_loss = (self.avg_loss[0] * 0.99 + v_loss,
+                       self.avg_loss[1] * 0.99 + 1.0)
+      self.avg_perp = (self.avg_perp[0] * 0.99 + v_perp,
+                       self.avg_perp[1] * 0.99 + 1.0)
       now = time.time()
-      print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.7f} step={step}'
+      print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} perp={loss:2.4f} avg_perp={avg_perp:2.4f} rate={rate:0.7f} step={step}'
           .format(
               stamp=timestamp(),
               counter=self.counter,
@@ -302,6 +307,8 @@ class TrainGPT2(object):
               rate=v_rate,
               loss=v_loss,
               avg=self.avg_loss[0] / self.avg_loss[1],
+              perp=v_perp,
+              avg_perp=self.avg_perp[0] / self.avg_perp[1],
               step=self.current_step,
               ))
       self.prev_time = now
