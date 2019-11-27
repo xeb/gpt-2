@@ -364,7 +364,7 @@ def main():
         data_sampler = Sampler(chunks, seed=seed)
         print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
       else:
-        data_sampler = TextSampler(dataset, enc, seed=seed)
+        data_sampler = TextSampler(dataset, enc, seed=seed, use_locking=True)
       return data_sampler
 
     print('Loading dataset...')
