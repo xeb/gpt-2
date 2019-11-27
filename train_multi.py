@@ -490,17 +490,18 @@ def main():
       all_trainers = list(get_trainers())
       if len(all_trainers) > 0:
         batches = len(all_trainers[0].fetch_vars)
-        for index in range(batches):
-          def thunk(trainers, index):
-            update_trainers(trainers, index)
-          thread = threading.Thread(target=thunk, args=(all_trainers, index))
-          thread.start()
-          threads.append(thread)
-      for thread in tqdm.tqdm(threads):
-        thread.join()
-      for trainer in all_trainers:
-        trainer.fresh = False
-      first = False
+        for index in tqdm.tqdm(list(range(batches))):
+          update_trainers(trainers, index)
+          #def thunk(trainers, index):
+          #  update_trainers(trainers, index)
+          #thread = threading.Thread(target=thunk, args=(all_trainers, index))
+          #thread.start()
+          #threads.append(thread)
+        #for thread in tqdm.tqdm(threads):
+        #  thread.join()
+        for trainer in all_trainers:
+          trainer.fresh = False
+        first = False
       print('All done', i)
       #if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
       #  def sync():
