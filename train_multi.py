@@ -395,17 +395,6 @@ def main():
       tflex.check_commands()
       if tflex.should_quit():
         break
-      i += 1
-      threads = []
-      for trainer in trainers:
-        def thunk(trainer):
-          trainer.fit()
-        thread = threading.Thread(target=thunk, args=(trainer,))
-        thread.start()
-        threads.append(thread)
-      for thread in threads:
-        thread.join()
-      print('All done', i)
       if len(trainers) > 1 and i % 10 == 0:
         def sync():
           print('Fetching...')
@@ -453,6 +442,17 @@ def main():
         thread = threading.Thread(target=sync, args=())
         thread.start()
         thread.join()
+      i += 1
+      threads = []
+      for trainer in trainers:
+        def thunk(trainer):
+          trainer.fit()
+        thread = threading.Thread(target=thunk, args=(trainer,))
+        thread.start()
+        threads.append(thread)
+      for thread in threads:
+        thread.join()
+      print('All done', i)
 
 if __name__ == '__main__':
     main()
