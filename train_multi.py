@@ -459,10 +459,10 @@ def main():
                   assert(n > 0)
                   values.append(value / n)
                 trainer.saver.assign(trainer.sess, variables, values)
-                trainer.avg_loss[0] = avg_loss[0] / avg_count
-                trainer.avg_loss[1] = avg_loss[1] / avg_count
-                trainer.avg_perp[0] = avg_perp[0] / avg_count
-                trainer.avg_perp[1] = avg_perp[1] / avg_count
+                #trainer.avg_loss[0] = avg_loss[0] / avg_count
+                #trainer.avg_loss[1] = avg_loss[1] / avg_count
+                #trainer.avg_perp[0] = avg_perp[0] / avg_count
+                #trainer.avg_perp[1] = avg_perp[1] / avg_count
             thread = threading.Thread(target=thunk, args=(trainer,))
             thread.start()
             threads.append(thread)
