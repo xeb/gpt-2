@@ -496,7 +496,13 @@ def main():
     if len(targets) <= 0:
       targets.append('auto')
     traincounter = TrainCounter(value=args.learning_rate_initial_step)
-    trainers = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter) for target in targets]
+    trainers = []
+    def add_trainer(target):
+      trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
+      trainer.ensure()
+      trainers.append(trainer)
+    for thread in tqdm.tqdm(parallelize(targets, add_trainer)):
+      thread.join()
     trainers[0].fresh = False
     def get_trainers():
       for trainer in trainers:
