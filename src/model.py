@@ -55,10 +55,10 @@ def gelu(x):
 def norm(x, scope, *, axis=-1, epsilon=1e-5, hparams=None):
     """Normalize to mean = 0, std = 1, then do a diagonal affine transform."""
     dtype = hparams.dtype if hparams else tf.float32
-    with tf.variable_scope(scope, dtype=dtype):
+    with tf.variable_scope(scope):
         n_state = x.shape[-1].value
-        g = get_variable('g') or tf.get_variable('g', [n_state], initializer=tf.constant_initializer(1, dtype=dtype))
-        b = get_variable('b') or tf.get_variable('b', [n_state], initializer=tf.constant_initializer(0, dtype=dtype))
+        g = get_variable('g') or tf.get_variable('g', [n_state], initializer=tf.constant_initializer(1, dtype=dtype), dtype=dtype)
+        b = get_variable('b') or tf.get_variable('b', [n_state], initializer=tf.constant_initializer(0, dtype=dtype), dtype=dtype)
         u = tf.reduce_mean(x, axis=axis, keepdims=True)
         s = tf.reduce_mean(tf.square(x-u), axis=axis, keepdims=True)
         s = s + tf.cast(epsilon, dtype)
@@ -84,8 +84,8 @@ def conv1d(x, scope, nf, *, w_init_stdev=0.02, hparams=None):
     dtype = hparams.dtype if hparams else tf.float32
     with tf.variable_scope(scope, dtype=dtype):
         *start, nx = shape_list(x)
-        w = get_variable('w') or tf.get_variable('w', [1, nx, nf], initializer=tf.random_normal_initializer(stddev=w_init_stdev, dtype=dtype))
-        b = get_variable('b') or tf.get_variable('b', [nf], initializer=tf.constant_initializer(0, dtype=dtype))
+        w = get_variable('w') or tf.get_variable('w', [1, nx, nf], initializer=tf.random_normal_initializer(stddev=w_init_stdev, dtype=dtype), dtype=dtype)
+        b = get_variable('b') or tf.get_variable('b', [nf], initializer=tf.constant_initializer(0, dtype=dtype), dtype=dtype)
         lhs = tf.reshape(x, [-1, nx])
         rhs = tf.reshape(w, [-1, nf])
         if False: # noticeable slowdown https://i.imgur.com/95VAycJ.png
@@ -148,7 +148,7 @@ def attn(x, scope, n_state, *, past, hparams):
         return a
 
     dtype = hparams.dtype if hparams else tf.float32
-    with tf.variable_scope(scope, dtype=dtype):
+    with tf.variable_scope(scope):
         c = conv1d(x, 'c_attn', n_state*3, hparams=hparams)
         q, k, v = map(split_heads, tf.split(c, 3, axis=2))
         #present = tf.stack([k, v], axis=1)
@@ -166,7 +166,7 @@ def attn(x, scope, n_state, *, past, hparams):
 
 def mlp(x, scope, n_state, *, hparams):
     dtype = hparams.dtype if hparams else tf.float32
-    with tf.variable_scope(scope, dtype=dtype):
+    with tf.variable_scope(scope):
         nx = x.shape[-1].value
         h = gelu(conv1d(x, 'c_fc', n_state, hparams=hparams))
         h2 = conv1d(h, 'c_proj', nx, hparams=hparams)
@@ -180,7 +180,7 @@ def dropout(x, pdrop=0.1, train=True):
 
 def block(x, scope, *, past, hparams):
     dtype = hparams.dtype if hparams else tf.float32
-    with tf.variable_scope(scope, dtype=dtype):
+    with tf.variable_scope(scope):
         nx = x.shape[-1].value
         a, present = attn(norm(x, 'ln_1', hparams=hparams), 'attn', nx, past=past, hparams=hparams)
         x = x + a
@@ -205,14 +205,14 @@ def positions_for(tokens, past_length):
 
 def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
     dtype = hparams.dtype if hparams else tf.float32
-    with tf.variable_scope(scope, reuse=reuse, dtype=dtype):
+    with tf.variable_scope(scope, reuse=reuse):
         results = {}
         batch, sequence = shape_list(X)
 
         wpe = get_variable('wpe') or tf.get_variable('wpe', [hparams.n_ctx, hparams.n_embd],
-                             initializer=tf.random_normal_initializer(stddev=0.01, dtype=dtype))
+                             initializer=tf.random_normal_initializer(stddev=0.01, dtype=dtype), dtype=dtype)
         wte = get_variable('wte') or tf.get_variable('wte', [hparams.n_vocab, hparams.n_embd],
-                             initializer=tf.random_normal_initializer(stddev=0.02, dtype=dtype))
+                             initializer=tf.random_normal_initializer(stddev=0.02, dtype=dtype), dtype=dtype)
         past_length = 0 if past is None else tf.shape(past)[-2]
         h = tf.gather(wte, X) + tf.gather(wpe, positions_for(X, past_length))
 
