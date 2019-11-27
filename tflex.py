@@ -42,7 +42,7 @@ class Session(tf.Session):
       sess.run(tpu.initialize_system())
     return sess
 
-def split_by_params(vs, n=200e6, f=None):
+def split_by_params(vs, n=20e6, f=None):
   if f is None:
     f = lambda x: np.prod(x.shape.as_list())
   i = 0
