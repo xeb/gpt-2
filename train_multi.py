@@ -325,7 +325,7 @@ class TrainGPT2(threading.Thread):
       self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
                        self.avg_perp[1] * 0.99 + 1.0]
       now = time.time()
-      print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} perp={perp:2.4f} avg_perp={avg_perp:2.4f} rate={rate:0.7f} step={step}'
+      print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.7f} step={step}'
           .format(
               stamp=timestamp(),
               counter=self.counter,
@@ -334,9 +334,9 @@ class TrainGPT2(threading.Thread):
               ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
               rate=v_rate,
               loss=v_loss,
-              avg=self.avg_loss[0] / self.avg_loss[1],
               perp=v_perp,
-              avg_perp=self.avg_perp[0] / self.avg_perp[1],
+              avgloss=self.avg_loss[0] / self.avg_loss[1],
+              avgperp=self.avg_perp[0] / self.avg_perp[1],
               step=self.current_step,
               ))
       self.prev_time = now
