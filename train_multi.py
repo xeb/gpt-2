@@ -242,8 +242,8 @@ class TrainGPT2(object):
             keep_checkpoint_every_n_hours=2,
             reshape=args.truncate_weights)
       self.init = tf.global_variables_initializer()
-      self.avg_loss = (0.0, 0.0)
-      self.avg_perp = (0.0, 0.0)
+      self.avg_loss = [0.0, 0.0]
+      self.avg_perp = [0.0, 0.0]
     self.start_time = time.time()
     self.prev_time = self.start_time
     
