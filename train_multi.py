@@ -499,7 +499,8 @@ def main():
           yield trainer
     print("Warming up...")
     def warmup(trainer):
-      trainer.fit()
+      for i in range(10):
+        trainer.fit()
     for thread in tqdm.tqdm(parallelize(get_trainers(), warmup)):
       thread.join()
     print("Syncing...")
