@@ -28,6 +28,7 @@ import pytz
 from datetime import datetime, timezone
 
 import threading
+from collections import defaultdict
 
 CHECKPOINT_DIR = 'checkpoint'
 SAMPLE_DIR = 'samples'
@@ -377,15 +378,43 @@ def main():
     local.train = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target) for target in targets]
     while True:
       threads = []
+      accum = {}
+      accumcount = defaultdict(int)
+      lock = threading.Lock()
       for trainer in local.train:
         def thunk(trainer):
           trainer.fit()
+          for variables, values in trainer.saver.fetch(trainer.sess):
+            try:
+              lock.acquire()
+              for variable, value in zip(variables, values):
+                if variable.name in accum:
+                  accum[variable.name] = accum[variable.name] + value
+                else:
+                  accum[variable.name] = value
+                accumcount[variable.name] += 1
+            finally:
+              lock.release()
         thread = threading.Thread(target=thunk, args=(trainer,))
         thread.start()
         threads.append(thread)
       for thread in threads:
         thread.join()
       print('All done')
+      print('Summing...')
+      for k, v in accum.items():
+        n = accumcount[k]
+        assert(n > 0)
+        v = v / n
+      threads = []
+      for trainer in local.train:
+        def thunk(trainer):
+          pass
+        thread = threading.Thread(target=thunk, args=(trainer,))
+        thread.start()
+        threads.append(thread)
+      for thread in threads:
+        thread.join()
       tflex.check_commands()
       if tflex.should_quit():
         break

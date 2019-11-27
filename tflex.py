@@ -157,6 +157,13 @@ def save_variables(ckpt, session=None, var_list=None):
     print('Writing snapshot %s' % ckpt)
     os.rename(ckpt+'.tmp', ckpt)
 
+def fetch_variables(session=None, var_list=None):
+    session = session or tf.get_default_session()
+    vs = var_list or tf.trainable_variables()
+    for variables in tqdm.tqdm(list(split_by_params(vs))):
+      values = session.run(variables)
+      yield variables, values
+
 class Saver(object):
   def __init__(
     self,
@@ -231,6 +238,10 @@ class Saver(object):
           except:
             print('Failed to truncate %s' % fname)
         self.checkpoints = self.checkpoints[1:]
+
+  def fetch(self, sess):
+    for variables, values in fetch_variables(session=sess, var_list=self.var_list):
+      yield variables, values
 
 class Commands(object):
   def __init__(self, path='commands'):
