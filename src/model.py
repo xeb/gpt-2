@@ -66,7 +66,7 @@ def norm(x, scope, *, axis=-1, epsilon=1e-5, hparams=None):
         s = tf.sqrt(s)
         s = tf.cast(s, tf.float32)
         s = tf.cast(1.0, tf.float32) / s
-        x = (x - u) * s
+        x = (x - u) * tf.cast(s, dtype)
         x = x*g + b
         return x
 
