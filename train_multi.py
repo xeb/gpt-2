@@ -195,9 +195,9 @@ class TrainGPT2(object):
         lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
 
         if args.optimizer == 'adam':
-          opt = tf.train.AdamOptimizer(learning_rate=lr)
+          opt = tf.train.AdamOptimizer(learning_rate=lr, use_locking=True)
         elif args.optimizer == 'sgd':
-          opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
+          opt = tf.train.GradientDescentOptimizer(learning_rate=lr, use_locking=True)
         elif args.optimizer == 'ada':
           import tensor2tensor.utils.optimize
           from tensor2tensor.utils import hparam
@@ -206,7 +206,7 @@ class TrainGPT2(object):
           ada_hparams = registry.hparams('afx_mimic_adam')
           ada_hparams.optimizer_adafactor_beta1 = 0.0
           ada_hparams.optimizer_adafactor_factored = True
-          opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
+          opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams, use_locking=True)
         else:
           exit('Bad optimizer:', args.optimizer)
 
