@@ -154,6 +154,7 @@ def randomize(context, hparams, p):
 
 class TrainGPT2(threading.Thread):
   def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=120000, session=None):
+    super(TrainGPT2, self).__init__()
     self.fresh = True
     self.args = args
     self.hparams = hparams
@@ -346,6 +347,14 @@ class TrainGPT2(threading.Thread):
   def variables(self, index):
     return self.fetch_vars[index % len(self.fetch_vars)]
 
+def parallelize(xs, thunk, *args):
+  threads = []
+  for x in xs:
+    thread = threading.Thread(target=thunk, args=(x, *args))
+    thread.start()
+    threads.append(thread)
+  return threads
+
 def update_trainers(trainers, i, sync_all=False):
   #trainers = [x for x in all_trainers if not x.aborted()]
   #print('Fetching...')
@@ -471,8 +480,10 @@ def main():
         if not trainer.aborted():
           yield trainer
     print("Warming up...")
-    for trainer in get_trainers():
+    def warmup(trainer):
       trainer.fit()
+    for thread in tqdm.tqdm(parallelize(get_trainers(), warmup)):
+      thread.join()
     print("Syncing...")
     update_trainers(list(get_trainers()), 0, sync_all=True)
     print("Starting...")
