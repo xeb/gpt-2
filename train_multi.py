@@ -391,6 +391,7 @@ def main():
       targets.append('auto')
     trainers = [TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target) for target in targets]
     i = 0
+    sync_thread = None
     while True:
       tflex.check_commands()
       if tflex.should_quit():
@@ -450,9 +451,10 @@ def main():
           for thread in threads:
             thread.join()
           print('Synchronized.')
-        thread = threading.Thread(target=sync, args=())
-        thread.start()
-        thread.join()
+        if sync_thread:
+          sync_thread.join()
+        sync_thread = threading.Thread(target=sync, args=())
+        sync_thread.start()
 
 if __name__ == '__main__':
     main()
