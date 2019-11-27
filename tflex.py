@@ -245,12 +245,16 @@ class Saver(object):
             print('Failed to truncate %s' % fname)
         self.checkpoints = self.checkpoints[1:]
 
-  def fetch(self, sess):
-    for variables, values in fetch_variables(session=sess, var_list=self.var_list):
+  def fetch(self, sess, var_list=None):
+    if var_list == None:
+      var_list = self.var_list
+    for variables, values in fetch_variables(session=sess, var_list=var_list):
       yield variables, values
 
-  def variables(self, sess):
-    for variables in partition_variables(session=sess, var_list=self.var_list):
+  def variables(self, sess, var_list=None):
+    if var_list == None:
+      var_list = self.var_list
+    for variables in partition_variables(session=sess, var_list=var_list):
       yield variables
 
   def assign(self, sess, variables, values):
