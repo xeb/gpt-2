@@ -368,7 +368,7 @@ def update_trainers(trainers, i, sync_all=False):
     if trainer.fresh:
       continue
     def thunk(trainer, lock, index):
-      for variables in ([trainer.variables(index=index)] if not sync_all else list(tflex.split_by_params(trainer.global_vars))):
+      for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
         values = trainer.sess.run(variables)
         try:
           lock.acquire()
@@ -389,7 +389,7 @@ def update_trainers(trainers, i, sync_all=False):
   threads = []
   for trainer in trainers:
     def thunk(trainer, index):
-      for variables in ([trainer.variables(index=index)] if not sync_all else list(tflex.split_by_params(trainer.global_vars))):
+      for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
         values = []
         for v in variables:
           assert(v.name in accum)
