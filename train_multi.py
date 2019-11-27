@@ -297,11 +297,11 @@ class TrainGPT2(object):
       self.context.load(batch, session=self.sess)
       self.say('Running opt_apply...')
       (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
-      self.avg_loss = (self.avg_loss[0] * 0.99 + v_loss,
-                       self.avg_loss[1] * 0.99 + 1.0)
+      self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
+                       self.avg_loss[1] * 0.99 + 1.0]
       v_perp = math.exp(v_loss)
-      self.avg_perp = (self.avg_perp[0] * 0.99 + v_perp,
-                       self.avg_perp[1] * 0.99 + 1.0)
+      self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
+                       self.avg_perp[1] * 0.99 + 1.0]
       now = time.time()
       print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} perp={perp:2.4f} avg_perp={avg_perp:2.4f} rate={rate:0.7f} step={step}'
           .format(
