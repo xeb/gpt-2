@@ -410,8 +410,8 @@ def main():
       if len(trainers) > 1 and (i % 10 == 0 or i == 1):
         def sync():
           print('Fetching...')
-          avg_loss = (0.0, 0.0)
-          avg_perp = (0.0, 0.0)
+          avg_loss = [0.0, 0.0]
+          avg_perp = [0.0, 0.0]
           avg_count = 0
           accum = {}
           accumcount = defaultdict(int)
