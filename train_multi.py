@@ -298,7 +298,7 @@ class TrainGPT2(threading.Thread):
     while not self.stopped:
       self.fit()
 
-  def fit(self):
+  def ensure(self):
     with self.sess.as_default():
       if self.init is not None:
         self.say('Initializing...')
@@ -325,6 +325,10 @@ class TrainGPT2(threading.Thread):
         #global_step.load(current_step, session=session)
         #lr.load(args.learning_rate, session=session)
         self.init = None
+
+  def fit(self):
+    self.ensure()
+    with self.sess.as_default():
       v_rate = self.update_lr()
       self.say('Generating batch...')
       batch = self.sample_batch()
