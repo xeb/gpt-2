@@ -219,7 +219,8 @@ class TrainGPT2(threading.Thread):
         summary_loss = tf.summary.scalar('loss', loss)
         summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
         global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
-        fetch_vars = list(tflex.split_by_params(global_vars))
+        #fetch_vars = list(tflex.split_by_params(global_vars))
+        fetch_vars = list(tflex.split_by_params(train_vars))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
@@ -366,7 +367,7 @@ def update_trainers(trainers, i, sync_all=False):
     if trainer.fresh:
       continue
     def thunk(trainer, lock, index):
-      for variables in ([trainer.variables(index=index)] if not sync_all else trainer.fetch_vars):
+      for variables in ([trainer.variables(index=index)] if not sync_all else list(tflex.split_by_params(trainer.global_vars))):
         values = trainer.sess.run(variables)
         try:
           lock.acquire()
@@ -387,7 +388,7 @@ def update_trainers(trainers, i, sync_all=False):
   threads = []
   for trainer in trainers:
     def thunk(trainer, index):
-      for variables in ([trainer.variables(index=index)] if not sync_all else trainer.fetch_vars):
+      for variables in ([trainer.variables(index=index)] if not sync_all else list(tflex.split_by_params(trainer.global_vars))):
         values = []
         for v in variables:
           assert(v.name in accum)
