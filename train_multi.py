@@ -431,6 +431,7 @@ def main():
                     else:
                       accum[variable.name] = value
                     accumcount[variable.name] += 1
+                  nonlocal avg_count
                   avg_count += 1
                   avg_loss[0] += trainer.avg_loss[0]
                   avg_loss[1] += trainer.avg_loss[1]
