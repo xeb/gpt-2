@@ -297,7 +297,7 @@ class TrainGPT2(object):
               ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
               rate=v_rate,
               loss=v_loss,
-              avg=avg_loss[0] / avg_loss[1],
+              avg=self.avg_loss[0] / self.avg_loss[1],
               step=self.current_step,
               ))
       self.prev_time = now
