@@ -288,7 +288,7 @@ class TrainGPT2(threading.Thread):
     return time.time() - self.start_time
 
   def say(self, msg):
-    print('{stamp} [{counter} | {time:2.4f}] {msg}'.format(counter=self.counter, time=self.elapsed(), msg=msg, stamp=timestamp()))
+    print('{stamp} {target:16s} [{counter} | {time:2.4f}] {msg}'.format(stamp=timestamp(), target=self.target[-16:], counter=self.counter, time=self.elapsed(), msg=msg))
 
   def update_lr(self):
     self.lr.load(self.args.learning_rate, session=self.sess)
