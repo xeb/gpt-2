@@ -395,14 +395,25 @@ def main():
       tflex.check_commands()
       if tflex.should_quit():
         break
-      if len(trainers) > 1 and i % 10 == 0:
+      i += 1
+      threads = []
+      for trainer in trainers:
+        def thunk(trainer):
+          trainer.fit()
+        thread = threading.Thread(target=thunk, args=(trainer,))
+        thread.start()
+        threads.append(thread)
+      for thread in threads:
+        thread.join()
+      print('All done', i)
+      if len(trainers) > 1 and (i % 10 == 0 or i == 1):
         def sync():
           print('Fetching...')
           accum = {}
           accumcount = defaultdict(int)
           lock = threading.Lock()
           threads = []
-          for trainer in trainers:
+          for trainer in trainers if i > 1 else [trainers[0]]:
             def thunk(trainer):
               for variables, values in trainer.saver.fetch(trainer.sess, var_list=trainer.global_vars):
                 try:
@@ -442,17 +453,6 @@ def main():
         thread = threading.Thread(target=sync, args=())
         thread.start()
         thread.join()
-      i += 1
-      threads = []
-      for trainer in trainers:
-        def thunk(trainer):
-          trainer.fit()
-        thread = threading.Thread(target=thunk, args=(trainer,))
-        thread.start()
-        threads.append(thread)
-      for thread in threads:
-        thread.join()
-      print('All done', i)
 
 if __name__ == '__main__':
     main()
