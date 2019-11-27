@@ -183,13 +183,6 @@ class TrainGPT2(object):
           tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=context[:, 1:], logits=output['logits'][:, :-1]))
 
-      global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
-      all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
-      train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
-
-      parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
-      print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
-
       with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
         global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
         current_step = args.learning_rate_initial_step
@@ -210,6 +203,13 @@ class TrainGPT2(object):
           opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams, use_locking=True)
         else:
           exit('Bad optimizer:', args.optimizer)
+
+        global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
+        all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
+        train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
+
+        parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
+        print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
 
         opt_grads = tf.gradients(loss, train_vars)
         opt_grads = list(zip(opt_grads, train_vars))
