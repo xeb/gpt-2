@@ -183,6 +183,7 @@ class TrainGPT2(object):
           tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=context[:, 1:], logits=output['logits'][:, :-1]))
 
+      global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
       all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
       train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
 
@@ -225,6 +226,7 @@ class TrainGPT2(object):
       self.context = context
       self.output = output
       self.opt = opt
+      self.global_vars = global_vars
       self.all_vars = all_vars
       self.train_vars = train_vars
       self.opt_grads = opt_grads
@@ -413,7 +415,7 @@ def main():
           threads = []
           for trainer in trainers:
             def thunk(trainer):
-              for variables, values in trainer.saver.fetch(trainer.sess):
+              for variables, values in trainer.saver.fetch(trainer.sess, var_list=trainer.global_vars):
                 try:
                   lock.acquire()
                   for variable, value in zip(variables, values):
@@ -433,7 +435,7 @@ def main():
           threads = []
           for trainer in trainers:
             def thunk(trainer):
-              for variables in trainer.saver.variables(trainer.sess):
+              for variables in trainer.saver.variables(trainer.sess, var_list=trainer.global_vars):
                 values = []
                 for v in variables:
                   assert(v.name in accum)
