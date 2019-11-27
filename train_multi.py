@@ -473,6 +473,10 @@ def main():
           sync_thread.join()
         sync_thread = threading.Thread(target=sync, args=())
         sync_thread.start()
+        if i == 1:
+          sync_thread.join()
+          sync_thread = None
+
 
 if __name__ == '__main__':
     main()
