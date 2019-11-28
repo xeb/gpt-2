@@ -239,8 +239,9 @@ class TrainGPT2(threading.Thread):
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
-      self.summary_log = tf.summary.FileWriter(
-            os.path.join(CHECKPOINT_DIR, args.run_name + "_" + self.target))
+      run_name = args.run_name + "_" + self.target
+      run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
+      self.summary_log = tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
       self.summaries = summaries
       self.loss = loss
       self.context = context
