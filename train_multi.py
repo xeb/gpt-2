@@ -548,12 +548,23 @@ def main():
       targets.append('auto')
     traincounter = TrainCounter(value=counter)
     trainers = []
+    maxconnections = 10
+    trainers_sema = threading.BoundedSemaphore(value=maxconnections)
+    trainers_lock = threading.RLock()
     def add_trainer(target):
-      trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
-      trainer.ensure()
-      trainers.append(trainer)
+      with trainers_sema:
+        trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
+        trainer.ensure()
+        with trainers_lock:
+          for existing in trainers:
+            if existing.target == target:
+              trainers.remove(existing)
+              break
+          trainers.append(trainer)
     for thread in tqdm.tqdm(parallelize(targets, add_trainer)):
       thread.join()
+    maxconnections = 2
+    trainers_sema = threading.BoundedSemaphore(value=maxconnections)
     trainers[0].fresh = False
     def get_trainers():
       for trainer in trainers:
