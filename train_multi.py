@@ -515,12 +515,21 @@ def main():
     seed = None if args.seed < 0 else args.seed
     data_sampler = make_sampler(dataset=args.dataset, enc=enc, seed=seed, combine=args.combine)
 
+    print('Training...')
+    counter = 1
+    counter_path = os.path.join(CHECKPOINT_DIR, args.run_name, 'counter')
+    if os.path.exists(counter_path):
+        # Load the step number if we're resuming a run
+        # Add 1 so we don't immediately try to save again
+        with open(counter_path, 'r') as fp:
+            counter = int(fp.read()) + 1
+
     local = threading.local()
 
     targets = [x.strip() for x in args.targets.split(',') if len(x.strip()) > 0]
     if len(targets) <= 0:
       targets.append('auto')
-    traincounter = TrainCounter(value=args.learning_rate_initial_step)
+    traincounter = TrainCounter(value=counter)
     trainers = []
     def add_trainer(target):
       trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
