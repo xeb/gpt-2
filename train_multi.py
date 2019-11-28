@@ -201,8 +201,8 @@ class TrainGPT2(threading.Thread):
 
       with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
         global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
-        current_step = counter.value
-        global_step.load(current_step, session=session)
+        current_step = counter
+        global_step.load(current_step.value, session=session)
         if args.learning_rate_cos:
             lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
                 warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
