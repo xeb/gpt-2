@@ -202,7 +202,13 @@ class TrainGPT2(threading.Thread):
       with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
         global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
         current_step = counter
-        lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
+        global_step.load(current_step, session=session)
+        if args.learning_rate_cos:
+            lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
+                warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
+        else:
+            lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
+            lr.load(args.learning_rate, session=session)
 
         use_locking=False
         if args.optimizer == 'adam':
@@ -292,8 +298,19 @@ class TrainGPT2(threading.Thread):
     print('{stamp} {target:16s} [{counter} | {time:2.4f}] {msg}'.format(stamp=timestamp(), target=self.target[-16:], counter=self.counter, time=self.elapsed(), msg=msg))
 
   def update_lr(self):
-    self.lr.load(self.args.learning_rate, session=self.sess)
-    return self.lr.eval(session=self.sess)
+    global_step = self.global_step
+    args = self.args
+    lr = self.lr
+    sess = self.sess
+    if not args.learning_rate_cos:
+      if step is None:
+        step = global_step.eval(session=sess)
+      if rate is None:
+        rate = args.learning_rate
+      if callable(rate):
+        rate = rate(step)
+      lr.load(rate, session=sess)
+    return lr.eval(session=sess)
   
   def run(self):
     while not self.stopped:
