@@ -509,14 +509,15 @@ def main():
       for trainer in trainers:
         if not trainer.aborted():
           yield trainer
-    print("Warming up...")
-    def warmup(trainer):
-      while trainer.current_step.value < 50:
-        trainer.fit()
-    for thread in tqdm.tqdm(parallelize(get_trainers(), warmup)):
-      thread.join()
-    print("Syncing...")
-    update_trainers(list(get_trainers()), 0, sync_all=True)
+    #print("Warming up...")
+    #def warmup(trainer):
+    #  while trainer.current_step.value < 50:
+    #    trainer.fit()
+    #for thread in tqdm.tqdm(parallelize(get_trainers(), warmup)):
+    #  thread.join()
+    if args.fresh_model:
+      print("Syncing...")
+      update_trainers(list(get_trainers()), 0, sync_all=True)
     print("Starting...")
     for trainer in get_trainers():
       trainer.fresh = False
