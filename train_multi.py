@@ -370,6 +370,30 @@ class TrainGPT2(threading.Thread):
   def variables(self, index):
     return self.fetch_vars[index % len(self.fetch_vars)]
 
+def save_trainer(trainer):
+  if trainer.aborted():
+    return False
+  args = trainer.args
+  counter = trainer.counter
+  saver = trainer.saver
+  sess = trainer.sess
+  maketree(os.path.join(CHECKPOINT_DIR, trainer.args.run_name))
+  print('Saving', os.path.join(CHECKPOINT_DIR, trainer.args.run_name, 'model-{}').format(counter))
+  t0 = time.time()
+  saver.save(sess, os.path.join(CHECKPOINT_DIR, args.run_name, 'model'), global_step=counter)
+  t1 = time.time()
+  print('Saved in %f seconds' % (t1 - t0))
+  counter_path = os.path.join(CHECKPOINT_DIR, args.run_name, 'counter')
+  with open(counter_path, 'w') as fp:
+      fp.write(str(counter) + '\n')
+  return True
+
+def save_trainers(trainers):
+  for trainer in trainers:
+    if save_trainer(trainer):
+      return True
+  return False
+
 def parallelize(xs, thunk, *args):
   threads = []
   for x in xs:
