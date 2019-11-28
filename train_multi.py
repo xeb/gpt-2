@@ -559,6 +559,12 @@ def main():
       for trainer in trainers:
         if not trainer.aborted():
           yield trainer
+
+    @tflex.register_command
+    def save():
+        maketree(os.path.join(CHECKPOINT_DIR, args.run_name))
+        save_trainers(get_trainers())
+
     #print("Warming up...")
     #def warmup(trainer):
     #  while trainer.current_step.value < 50:
@@ -597,6 +603,9 @@ def main():
       if len(all_trainers) > 0:
         batches = len(all_trainers[0].fetch_vars)
         for index in tqdm.tqdm(list(range(batches))):
+          tflex.check_commands()
+          if tflex.should_quit():
+            break
           update_trainers(all_trainers, index)
           #def thunk(trainers, index):
           #  update_trainers(trainers, index)
