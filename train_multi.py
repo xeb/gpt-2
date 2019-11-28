@@ -548,7 +548,7 @@ def main():
       targets.append('auto')
     traincounter = TrainCounter(value=counter)
     trainers = []
-    maxconnections = 10
+    maxconnections = 50
     trainers_sema = threading.BoundedSemaphore(value=maxconnections)
     trainers_lock = threading.RLock()
     def add_trainer(target):
