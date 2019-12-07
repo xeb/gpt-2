@@ -291,8 +291,8 @@ def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_t
         loss_batch = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=context[:, 1:], logits=output['logits'][:, :-1])
         loss = tf.reduce_mean(loss_batch)
-        #if hparams.dtype != tf.float32:
-        #    loss = tf.cast(loss, tf.float32)
+        if hparams.dtype != tf.float32:
+            loss = tf.cast(loss, tf.float32)
 
         global_vars = [v for v in tf.global_variables() if v.name.startswith(use_scope + '/')]
         all_vars = [v for v in tf.trainable_variables() if v.name.startswith(use_scope + '/')]
