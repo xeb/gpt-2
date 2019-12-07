@@ -285,6 +285,7 @@ def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_t
           if hparams.dtype == tf.bfloat16:
             with tf.contrib.tpu.bfloat16_scope():
               output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
+            output['logits'] = tf.cast(lm_output['logits'], tf.float32)
           else:
             output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
 
@@ -348,8 +349,8 @@ def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_t
             exit('Bad optimizer:', optimizer)
         #opt_apply = opt.minimize(loss, var_list=train_vars, global_step=global_step, colocate_gradients_with_ops=colocate_gradients_with_ops)
         if use_memory_saving_gradients:
-          #opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
-          opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
+          opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
+          #opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
         else:
           opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
         opt_grads = list(zip(opt_grads, train_vars))
