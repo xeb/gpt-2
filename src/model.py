@@ -1,6 +1,11 @@
+import os
 import numpy as np
 import tensorflow as tf
+from optimizers import *
 from tensorflow.contrib.training import HParams
+from tensorflow.python.ops import gradients
+import memory_saving_gradients
+import math
 
 def default_hparams():
     return HParams(
@@ -14,7 +19,16 @@ def default_hparams():
         dtype=tf.float32
     )
 
-import os
+def get_cores(session=None):
+  if session is None:
+    session = tf.get_default_session()
+  cores = session.list_devices()[2:2+8]
+  return cores
+
+def get_core(i, session=None):
+  cores = get_cores(session=session)
+  if len(cores) > 0:
+    return cores[i % len(cores)].name
 
 def get_variable(name):
     name = os.path.join(tf.get_variable_scope().name, name)
@@ -27,17 +41,22 @@ def get_or_init_variable(name, *args, **kws):
   v = get_variable(name)
   if v is not None:
     return v
-  use_resource = kws.pop('use_resource') if 'use_resource' in kws else True
+  #use_resource = kws.pop('use_resource') if 'use_resource' in kws else True
+  use_resource = kws.pop('use_resource') if 'use_resource' in kws else False
   v = tf.get_variable(name, use_resource=use_resource, *args, **kws)
   return v
 
 def constant_initializer(*args, **kws):
-  with tf.device(''):
-    return tf.constant_initializer(*args, **kws)
+  #with tf.device(None):
+  #  return tf.constant_initializer(*args, **kws)
+  return tf.constant_initializer(*args, **kws)
 
 def random_normal_initializer(*args, **kws):
-  with tf.device(''):
-    return tf.random_normal_initializer(*args, **kws)
+  #with tf.device(None):
+  #  return tf.random_normal_initializer(*args, **kws)
+  #x = kws.pop('stddev')
+  #return constant_initializer(x, *args, **kws)
+  return tf.random_normal_initializer(*args, **kws)
 
 def shape_list(x):
     """Deal with dynamic shape in tensorflow cleanly."""
@@ -115,7 +134,7 @@ def attn(x, scope, n_state, *, past, hparams):
         _, _, nd, ns = shape_list(w)
         b = attention_mask(nd, ns, dtype=w.dtype)
         b = tf.reshape(b, [1, 1, nd, ns])
-        w = w*b - tf.cast(65500 if w.dtype != tf.float32 else 1e10, w.dtype)*(1-b)
+        w = w*b - tf.cast(65500 if w.dtype == tf.float16 else 1e10, w.dtype)*(1-b)
         return w
 
     def multihead_attn(q, k, v):
@@ -201,17 +220,172 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
         presents = []
         pasts = tf.unstack(past, axis=1) if past is not None else [None] * hparams.n_layer
         assert len(pasts) == hparams.n_layer
+        #every = int(math.sqrt(hparams.n_layer))
+        every = 1
+        tf.add_to_collection('checkpoints', h)
         for layer, past in enumerate(pasts):
             h, present = block(h, 'h%d' % layer, past=past, hparams=hparams)
-            if layer == 10:
+            #if layer == 10:
+            if layer % every == 0:
                 tf.add_to_collection('checkpoints', h)
             presents.append(present)
         results['present'] = tf.stack(presents, axis=1)
         h = norm(h, 'ln_f', hparams=hparams)
+        tf.add_to_collection('checkpoints', h)
 
         # Language model loss.  Do tokens <n predict token n?
         h_flat = tf.reshape(h, [batch*sequence, hparams.n_embd])
+        tf.add_to_collection('checkpoints', h_flat)
         logits = tf.matmul(h_flat, wte, transpose_b=True)
         logits = tf.reshape(logits, [batch, sequence, hparams.n_vocab])
         results['logits'] = logits
         return results
+
+def randomize(context, hparams, p):
+    if p > 0:
+        mask = tf.random.uniform(shape=tf.shape(context)) < p
+        noise = tf.random.uniform(shape=tf.shape(context), minval=0, maxval=hparams.n_vocab, dtype=tf.int32)
+        return tf.where(mask, noise, context)
+    else:
+        return context
+
+class Namespace(object):
+  pass
+
+def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, global_step=None, session=None, scope='model', max_cores=8, *args, **kws):
+    if session is None:
+        session = tf.get_default_session()
+    results = {}
+    results['shards'] = []
+    #results = {}
+    #results['present'] = []
+    #results['logits'] = []
+    with session.as_default():
+      #batch_size, *rest = shape_list(X)
+      cores = get_cores()
+      num_cores = len(cores)
+      if max_cores is not None:
+        if num_cores > max_cores:
+          num_cores = max_cores
+      if num_cores > batch_size:
+        num_cores = batch_size
+      assert(num_cores > 0)
+      #if num_cores <= 0:
+      #  return model(hparams, X, scope=scope, *args, **kws)
+      print('Sharding across %d cores' % len(cores))
+      assert(batch_size % num_cores == 0)
+      #contexts = tf.split(X, num_cores, axis=0)
+      for i in range(num_cores):
+        core = cores[i].name
+        use_scope = scope if i <= 0 else ('core%03d_%s' % (i, scope))
+        #context = contexts[i]
+        context = tf.placeholder(tf.int32, [batch_size // num_cores, None])
+        context_in = randomize(context, hparams, noise)
+        with tf.device(core):
+          if hparams.dtype == tf.bfloat16:
+            with tf.contrib.tpu.bfloat16_scope():
+              output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
+          else:
+            output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
+
+        loss_batch = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=context[:, 1:], logits=output['logits'][:, :-1])
+        loss = tf.reduce_mean(loss_batch)
+        if hparams.dtype != tf.float32:
+            loss = tf.cast(loss, tf.float32)
+
+        global_vars = [v for v in tf.global_variables() if v.name.startswith(use_scope + '/')]
+        all_vars = [v for v in tf.trainable_variables() if v.name.startswith(use_scope + '/')]
+        train_vars = [v for v in all_vars if '/h' in v.name] if only_train_transformer_layers else all_vars
+
+        parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
+        print("Shard %d is using %d parameters (%.2fM) (scope='%s/')" % (i, parameter_count, parameter_count/(1024.0*1024.0), use_scope))
+
+        if optimizer == 'adam':
+            opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
+        elif optimizer == 'sgd':
+            opt = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+        elif optimizer == 'ada':
+          params = {}
+          params["decay_type"] = "adam"
+          #params["beta1"] = 0.9
+          params["beta1"] = 0.0
+          params["beta2"] = 0.999
+          lr = learning_rate
+          if params["decay_type"] == "adam":
+              decay_rate = adafactor_decay_rate_adam(params["beta2"])
+          elif params["decay_type"] == "pow":
+              decay_rate = adafactor_decay_rate_pow(params["decay_exponent"])
+          else:
+              raise ValueError("unknown optimizer_adafactor_decay_type")
+
+          if not "weight_decay" in params.keys():
+              opt = AdafactorOptimizer(
+                  learning_rate=lr,
+                  decay_rate=decay_rate,
+                  beta1=params["beta1"],
+                  name="Adafactor")
+
+          else:
+              AdafactorWOptimizer = tf.contrib.opt.extend_with_decoupled_weight_decay(AdafactorOptimizer)
+
+              opt = AdafactorWOptimizer(
+                  weight_decay=params["weight_decay"] * lr,
+                  learning_rate=lr,
+                  decay_rate=decay_rate,
+                  beta1=params["beta1"],
+                  name="AdafactorW")
+        elif optimizer == 'ada':
+            import tensor2tensor.utils.optimize
+            from tensor2tensor.utils import hparam
+            import tensor2tensor.models.research
+            from tensor2tensor.utils import registry
+            ada_hparams = registry.hparams('afx_mimic_adam')
+            ada_hparams.optimizer_adafactor_beta1 = 0.0
+            ada_hparams.optimizer_adafactor_factored = True
+            opt = tensor2tensor.utils.optimize.adafactor(learning_rate=learning_rate, hparams=ada_hparams)
+        else:
+            exit('Bad optimizer:', optimizer)
+        #opt_apply = opt.minimize(loss, var_list=train_vars, global_step=global_step, colocate_gradients_with_ops=colocate_gradients_with_ops)
+        if use_memory_saving_gradients:
+          #opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
+          opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
+        else:
+          opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients_with_ops)
+        opt_grads = list(zip(opt_grads, train_vars))
+        opt_apply = opt.apply_gradients(opt_grads, global_step=global_step)
+        fit = tf.tuple([loss], control_inputs=[opt_apply])
+        r = Namespace()
+        r.scope = use_scope
+        r.context = context
+        r.context_in = context_in
+        r.output = output
+        r.loss_batch = loss_batch
+        r.loss = loss
+        r.all_vars = all_vars
+        r.train_vars = train_vars
+        r.global_vars = global_vars
+        r.parameter_count = parameter_count
+        r.opt = opt
+        r.opt_apply = opt_apply
+        r.fit = fit
+        results['shards'].append(r)
+        #results['present'].append(r['present'])
+        #results['logits'].append(r['logits'])
+      #present = tf.concat(results['present'], axis=0)
+      #logits = tf.concat(results['logits'], axis=0)
+      #import pdb
+      #pdb.set_trace()
+      #results['present'] = present
+      #results['logits'] = logits
+      inputs = [x.context for x in results['shards']]
+      results['inputs'] = inputs
+      def get_feed_dict(batch):
+        r = {}
+        j = batch_size // num_cores
+        assert(batch_size % num_cores == 0)
+        for i, context in enumerate(inputs):
+          r[context] = batch[i:i+j]
+        return r
+      results['feed'] = get_feed_dict
+      return results

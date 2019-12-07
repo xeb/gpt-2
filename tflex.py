@@ -30,7 +30,7 @@ def get_session_target(target='auto'):
 
 class Session(tf.Session):
   def __init__(self, target='auto', graph=None, config=None, init_tpu=False):
-    super().__init__(get_session_target(target), graph=graph, config=config)
+    super(Session, self).__init__(get_session_target(target), graph=graph, config=config)
     self.init_tpu=init_tpu
 
   def __enter__(self):
@@ -40,7 +40,7 @@ class Session(tf.Session):
       sess.run(tpu.initialize_system())
     return sess
 
-def split_by_params(vs, n=200e6, f=None):
+def split_by_params(vs, n=20e6, f=None):
   if f is None:
     f = lambda x: np.prod(x.shape.as_list())
   i = 0
