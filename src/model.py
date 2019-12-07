@@ -351,7 +351,7 @@ def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_t
           #opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
           opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
         else:
-          opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients_with_ops)
+          opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
         opt_grads = list(zip(opt_grads, train_vars))
         opt_apply = opt.apply_gradients(opt_grads, global_step=global_step)
         fit = tf.tuple([loss], control_inputs=[opt_apply])
