@@ -86,6 +86,9 @@ def grab_values(variables, reader, reshape=False):
     value = truncate_value(variable, value, reshape=reshape)
     yield variable, value
 
+def set_variables(variables, values):
+  return [tf.assign(v, x) for v, x in zip(variables, values)]
+
 def assign_values(variables, values, session=None):
   session = session or tf.get_default_session()
   ops = [x.initializer for x in variables]
@@ -191,7 +194,7 @@ class Saver(object):
     self.checkpoints = []
 
   def restore(self, sess, save_path):
-    if save_path.endswith('.ckpt'):
+    if save_path.endswith('.ckpt') or os.path.isfile(save_path + '.data-00000-of-00001'):
       load_snapshot(save_path, session=sess, var_list=self.var_list, reshape=self.reshape)
     elif save_path.endswith('.hdf5'):
       load_variables(save_path, session=sess, var_list=self.var_list, reshape=self.reshape)

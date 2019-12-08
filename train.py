@@ -315,7 +315,8 @@ def main():
         output = model.shard(batch_size=args.batch_size, hparams=hparams, noise=args.noise, learning_rate=lr, optimizer=args.optimizer, only_train_transformer_layers=args.only_train_transformer_layers, global_step=global_step, session=sess, colocate_gradients_with_ops=args.colocate_gradients_with_ops, use_memory_saving_gradients=args.memory_saving_gradients, max_cores=args.max_cores)
         shards = output['shards']
         opt_loss = tf.tuple([x.loss for x in shards])
-        the_vars = [x.global_vars for x in shards]
+        #the_vars = [x.global_vars for x in shards]
+        the_vars = [x.train_vars for x in shards]
         ops = []
         N = len(the_vars[0])
         M = len(the_vars)
@@ -353,7 +354,7 @@ def main():
             reshape=args.truncate_weights)
         print("Initializing...")
         sess.run(tf.global_variables_initializer())
-        interp_rate.load(4.0, session=sess)
+        interp_rate.load(2.0, session=sess)
 
         if args.restore_from == 'latest':
             ckpt = tflex.latest_checkpoint(
@@ -503,8 +504,11 @@ def main():
           run_opts = None
 
         tflex.run_opt_gather = True
-        say('Running opt_gather...')
-        sess.run(opt_gather, options=run_opts)
+        #say('Running opt_gather...')
+        #sess.run(opt_gather, options=run_opts)
+        say('Running opt_set...')
+        opt_set = tf.group([tf.group(tflex.set_variables(shards[i].global_vars, shards[0].global_vars)) for i in range(1, M)])
+        sess.run(opt_set, options=run_opts)
 
         last_saved_time = elapsed()
         while True:
