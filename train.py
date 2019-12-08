@@ -321,20 +321,21 @@ def main():
         N = len(the_vars[0])
         M = len(the_vars)
         #opt_apply = tf.tuple([x.fit for x in shards])
-        #opt_apply = tf.group([x.opt_apply for x in shards])
+        opt_apply = tf.group([x.opt_apply for x in shards])
         #opt_apply = tf.group([shards[i].opt_apply for i in range(1,M)])
-        opt_apply = tf.group([x.opt_apply for x in shards[1:]])
+        #opt_apply = tf.group([x.opt_apply for x in shards[1:]])
         for j in range(N):
           #x0 = tf.reduce_mean([the_vars[i][j] for i in range(M)], axis=0)
           #op1 = tf.group([tf.assign(the_vars[i][j], x0) for i in range(0,M)])
           #x0 = tf.reduce_sum([(the_vars[i][j] - the_vars[0][j]) for i in range(M)], axis=0) / (M/2) + the_vars[0][j]
+          x0 = tf.reduce_mean([(the_vars[i][j] - the_vars[0][j]) for i in range(M)], axis=0) * interp_rate + the_vars[0][j]
           #x0 = tf.reduce_sum([(the_vars[i][j] - the_vars[0][j]) for i in range(1,M)], axis=0) / (M - 1) * interp_rate + the_vars[0][j]
-          x0 = tf.reduce_mean([(the_vars[i][j] - the_vars[0][j]) for i in range(1,M)], axis=0) * interp_rate + the_vars[0][j]
+          #x0 = tf.reduce_mean([(the_vars[i][j] - the_vars[0][j]) for i in range(1,M)], axis=0) * interp_rate + the_vars[0][j]
           op1 = tf.group([tf.assign(the_vars[i][j], x0) for i in range(0,M)])
           ops.append(op1)
         opt_gather = tf.group(ops)
-        #opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards])#+[opt_gather])
-        opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards[1:]])#+[opt_gather])
+        opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards])
+        #opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards[1:]])
         summary_lr = tf.summary.scalar('learning_rate', lr)
         #summaries = tf.summary.merge([summary_lr, summary_loss])
         summaries = tf.summary.merge([summary_lr])
