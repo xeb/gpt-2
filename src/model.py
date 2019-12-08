@@ -220,9 +220,9 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
         presents = []
         pasts = tf.unstack(past, axis=1) if past is not None else [None] * hparams.n_layer
         assert len(pasts) == hparams.n_layer
-        #every = int(math.sqrt(hparams.n_layer))
-        every = 1
-        tf.add_to_collection('checkpoints', h)
+        every = int(math.sqrt(hparams.n_layer))
+        #every = 1
+        #tf.add_to_collection('checkpoints', h)
         for layer, past in enumerate(pasts):
             h, present = block(h, 'h%d' % layer, past=past, hparams=hparams)
             #if layer == 10:
@@ -231,11 +231,11 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
             presents.append(present)
         results['present'] = tf.stack(presents, axis=1)
         h = norm(h, 'ln_f', hparams=hparams)
-        tf.add_to_collection('checkpoints', h)
+        #tf.add_to_collection('checkpoints', h)
 
         # Language model loss.  Do tokens <n predict token n?
         h_flat = tf.reshape(h, [batch*sequence, hparams.n_embd])
-        tf.add_to_collection('checkpoints', h_flat)
+        #tf.add_to_collection('checkpoints', h_flat)
         logits = tf.matmul(h_flat, wte, transpose_b=True)
         logits = tf.reshape(logits, [batch, sequence, hparams.n_vocab])
         results['logits'] = logits
@@ -349,8 +349,8 @@ def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_t
             exit('Bad optimizer:', optimizer)
         #opt_apply = opt.minimize(loss, var_list=train_vars, global_step=global_step, colocate_gradients_with_ops=colocate_gradients_with_ops)
         if use_memory_saving_gradients:
-          opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
-          #opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
+          #opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
+          opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
         else:
           opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
         opt_grads = list(zip(opt_grads, train_vars))
