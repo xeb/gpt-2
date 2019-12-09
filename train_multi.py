@@ -2,6 +2,7 @@
 # Usage:
 #  PYTHONPATH=src ./train --dataset <file|directory|glob>
 import os
+import random
 import sys
 sys.path += [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')]
 
@@ -165,8 +166,11 @@ class TrainCounter(object):
     finally:
       self.lock.release()
 
+tflex.pinned_sessions = []
+tflex.session_timeout_in_ms = 600000
+
 class TrainGPT2(threading.Thread):
-  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=120000, session=None, counter=None):
+  def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=tflex.session_timeout_in_ms, session=None, counter=None):
     super(TrainGPT2, self).__init__()
     self.fresh = True
     self.args = args
@@ -185,10 +189,11 @@ class TrainGPT2(threading.Thread):
       if args.disable_layout_optimizer:
           config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
       session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
+      tflex.pinned_sessions.append([target, session]) # prevent GC'ing sessions, because the destructor seems to freeze.
 
     with session.as_default():
-      cores = session.list_devices()[2:]
-      core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
+      #cores = session.list_devices()[2:]
+      #core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
       #with tf.device(core):
       if True:
         #context = tf.placeholder(tf.int32, [args.batch_size, None])
@@ -202,13 +207,13 @@ class TrainGPT2(threading.Thread):
       with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
         global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
         current_step = counter
-        global_step.load(current_step.value, session=session)
+        #global_step.load(current_step.value, session=session)
         if args.learning_rate_cos:
             lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
                 warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
         else:
             lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
-            lr.load(args.learning_rate, session=session)
+            #lr.load(args.learning_rate, session=session)
 
         use_locking=False
         if args.optimizer == 'adam':
@@ -239,9 +244,9 @@ class TrainGPT2(threading.Thread):
         summary_loss = tf.summary.scalar('loss', loss)
         summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
         global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
-        #fetch_vars = list(tflex.split_by_params(global_vars))
+        fetch_vars = list(tflex.split_by_params(global_vars))
         #fetch_vars = list(tflex.split_by_params(train_vars))
-        fetch_vars = list(tflex.split_by_params(all_vars))
+        #fetch_vars = list(tflex.split_by_params(all_vars))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
@@ -263,6 +268,7 @@ class TrainGPT2(threading.Thread):
       self.lr = lr
       self.counter = current_step.incr()
       self.stopped = False
+      self.paused = False
       self.current_step = current_step
       self.global_step = global_step
       self.saver = tflex.Saver(
@@ -297,7 +303,7 @@ class TrainGPT2(threading.Thread):
   def say(self, msg):
     print('{stamp} {target:16s} [{counter} | {time:2.4f}] {msg}'.format(stamp=timestamp(), target=self.target[-16:], counter=self.counter, time=self.elapsed(), msg=msg))
 
-  def update_lr(self):
+  def update_lr(self, step=None, rate=None):
     global_step = self.global_step
     args = self.args
     lr = self.lr
@@ -314,14 +320,20 @@ class TrainGPT2(threading.Thread):
   
   def run(self):
     while not self.stopped:
+      while self.paused:
+        time.sleep(0.1)
       self.fit()
+      time.sleep(0.1)
 
   def ensure(self):
     with self.sess.as_default():
       if self.init is not None:
-        self.say('Initializing...')
-        self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
         args = self.args
+        if args.init_tpu:
+          self.say('Initializing TPU...')
+          self.sess.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=10000))
+        self.say('Initializing...')
+        self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=30000))
         if not args.fresh_model:
           self.say('Restoring...')
           saver = self.saver
@@ -342,11 +354,13 @@ class TrainGPT2(threading.Thread):
           print('Loaded in %f seconds' % (t1 - t0))
         #global_step.load(current_step, session=session)
         #lr.load(args.learning_rate, session=session)
+        self.say('Initialized.')
         self.init = None
 
   def fit(self):
     self.ensure()
     with self.sess.as_default():
+      self.global_step.load(self.counter, session=self.sess)
       v_rate = self.update_lr()
       self.say('Generating batch...')
       batch = self.sample_batch()
@@ -380,7 +394,7 @@ class TrainGPT2(threading.Thread):
       self.summary_log.add_summary(v_summary, self.counter)
       self.summary_log.flush()
       self.counter = self.current_step.incr()
-      self.global_step.load(self.counter, session=self.sess)
+      #self.global_step.load(self.counter, session=self.sess)
 
     return v_loss
 
@@ -388,7 +402,7 @@ class TrainGPT2(threading.Thread):
     return self.fetch_vars[index % len(self.fetch_vars)]
 
 def save_trainer(trainer):
-  if trainer.aborted():
+  if not trainer.is_alive() or trainer.fresh:
     return False
   args = trainer.args
   counter = trainer.counter
@@ -419,7 +433,20 @@ def parallelize(xs, thunk, *args):
     threads.append(thread)
   return threads
 
-def update_trainers(trainers, i, sync_all=False):
+#tflex.read_deadline = 20000
+#tflex.write_deadline = 20000
+tflex.read_deadline = 30000
+tflex.write_deadline = 30000
+
+def assign_values(variables, values, session=None, timeout_in_ms=tflex.write_deadline):
+  session = session or tf.get_default_session()
+  ops = [x.initializer for x in variables]
+  vals = dict([(x.initializer.inputs[1], value) for x, value in zip(variables, values)])
+  #for x, (k, v) in zip(variables, vals.items()):
+  #  print(x.name, x.shape.as_list(), k, v.shape)
+  session.run(ops, vals, options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms))
+
+def update_trainers(trainers, i, sync_all=False, timeout=30):
   #trainers = [x for x in all_trainers if not x.aborted()]
   #print('Fetching...')
   accum = {}
@@ -431,7 +458,7 @@ def update_trainers(trainers, i, sync_all=False):
       continue
     def thunk(trainer, lock, index):
       for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
-        values = trainer.sess.run(variables)
+        values = trainer.sess.run(variables, options=config_pb2.RunOptions(timeout_in_ms=tflex.read_deadline))
         try:
           lock.acquire()
           for variable, value in zip(variables, values):
@@ -445,8 +472,12 @@ def update_trainers(trainers, i, sync_all=False):
     thread = threading.Thread(target=thunk, args=(trainer,lock,i,))
     thread.start()
     threads.append(thread)
+  start_time = time.time()
   for thread in threads:
-    thread.join()
+    elapsed = (time.time() - start_time)
+    waiting = timeout - elapsed
+    if waiting > 0:
+      thread.join(timeout=waiting)
   #print('Synchronizing...')
   threads = []
   for trainer in trainers:
@@ -454,12 +485,15 @@ def update_trainers(trainers, i, sync_all=False):
       for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
         values = []
         for v in variables:
-          assert(v.name in accum)
-          value = accum[v.name]
-          n = accumcount[v.name]
-          assert(n > 0)
-          values.append(value / n)
-        tflex.assign_values(variables, values, session=trainer.sess)
+          with lock:
+            assert(v.name in accum)
+            value = accum[v.name]
+            n = accumcount[v.name]
+            #assert(n > 0)
+          if n > 0:
+            values.append(value / n)
+        #tflex.assign_values(variables, values, session=trainer.sess)
+        assign_values(variables, values, session=trainer.sess, timeout_in_ms=tflex.write_deadline)
         #trainer.fresh = False
         #trainer.avg_loss[0] = avg_loss[0] / avg_count
         #trainer.avg_loss[1] = avg_loss[1] / avg_count
@@ -468,8 +502,12 @@ def update_trainers(trainers, i, sync_all=False):
     thread = threading.Thread(target=thunk, args=(trainer,i,))
     thread.start()
     threads.append(thread)
+  start_time = time.time()
   for thread in threads:
-    thread.join()
+    elapsed = (time.time() - start_time)
+    waiting = timeout - elapsed
+    if waiting > 0:
+      thread.join(timeout=waiting)
   #print('Synchronized.')
 
 
@@ -546,29 +584,67 @@ def main():
     targets = [x.strip() for x in args.targets.split(',') if len(x.strip()) > 0]
     if len(targets) <= 0:
       targets.append('auto')
+    random.shuffle(targets)
     traincounter = TrainCounter(value=counter)
     trainers = []
-    maxconnections = 50
+    pending_trainers = []
+    pinned_trainers = []
+    maxconnections = 3
+    #maxconnections = 100
     trainers_sema = threading.BoundedSemaphore(value=maxconnections)
     trainers_lock = threading.RLock()
     def add_trainer(target):
       with trainers_sema:
-        trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
-        trainer.ensure()
         with trainers_lock:
+          for existing in pending_trainers:
+            if existing == target:
+              return
+          pending_trainers.append(target)
           for existing in trainers:
-            if existing.target == target:
-              trainers.remove(existing)
-              break
-          trainers.append(trainer)
-    for thread in tqdm.tqdm(parallelize(targets, add_trainer)):
-      thread.join()
-    maxconnections = 2
-    trainers_sema = threading.BoundedSemaphore(value=maxconnections)
-    trainers[0].fresh = False
+            if existing.target == target and existing.is_alive():
+              return
+        try:
+          trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
+          trainer.ensure()
+          trainer.start()
+          with trainers_lock:
+            for existing in trainers:
+              if existing.target == target:
+                existing.stopped = True
+                trainers.remove(existing)
+                break
+            if len(trainers) <= 0:
+              print('Trainer %s is no longer fresh (first trainer)' % trainer.target)
+              trainer.fresh = False
+            trainers.append(trainer)
+        finally:
+          pending_trainers.remove(target)
+    #start_time = time.time()
+    #init_timeout = 10
+    #for thread in tqdm.tqdm(parallelize(targets, add_trainer)):
+    #  elapsed = (time.time() - start_time)
+    #  waiting = init_timeout - elapsed
+    #  if waiting > 0:
+    #    thread.join(timeout=waiting)
+    def add_trainers():
+      for thread in tqdm.tqdm(parallelize(targets, add_trainer)):
+        thread.join()
+    tflex.adding_trainers = False
+    def add_trainers_toplevel():
+      while True:
+        print('Re-adding all targets...')
+        add_trainers()
+        time.sleep(1.0)
+        while not tflex.adding_trainers:
+          time.sleep(1.0)
+    tflex.add_swarm_thread = threading.Thread(target=add_trainers_toplevel)
+    tflex.add_swarm_thread.start()
+    #maxconnections = 2
+    #trainers_sema = threading.BoundedSemaphore(value=maxconnections)
+    #trainers[0].fresh = False
     def get_trainers():
       for trainer in trainers:
-        if not trainer.aborted():
+        if trainer.is_alive():
           yield trainer
 
     @tflex.register_command
@@ -587,16 +663,17 @@ def main():
       update_trainers(list(get_trainers()), 0, sync_all=True)
     print("Starting...")
     for trainer in get_trainers():
+      print('Trainer %s is no longer fresh (startup trainers)' % trainer.target)
       trainer.fresh = False
-      trainer.start()
+      #trainer.start()
     i = 0
     sync_thread = None
     first = True
+    tflex.averaging_yield_time = 1.0 # was 3.0
     while True:
       tflex.check_commands()
       if tflex.should_quit():
         break
-      i += 1
       all_trainers = list(get_trainers())
       threads = []
       #for trainer in all_trainers:
@@ -611,13 +688,22 @@ def main():
       #  thread.join()
       #print('Synchronizing...', i)
       #threads = []
-      if len(all_trainers) > 0:
+      if len(all_trainers) <= 0:
+        time.sleep(1.0)
+      else:
+        i += 1
         batches = len(all_trainers[0].fetch_vars)
-        for index in tqdm.tqdm(list(range(batches))):
+        fresh_trainers = all_trainers[:]
+        cycle = list(range(batches))
+        random.shuffle(cycle)
+        for index in tqdm.tqdm(cycle):
           tflex.check_commands()
           if tflex.should_quit():
             break
+          all_trainers = list(get_trainers())
+          fresh_trainers = [x for x in fresh_trainers if x in all_trainers]
           update_trainers(all_trainers, index)
+          time.sleep(tflex.averaging_yield_time) # yield some CPU and network bandwidth
           #def thunk(trainers, index):
           #  update_trainers(trainers, index)
           #thread = threading.Thread(target=thunk, args=(all_trainers, index))
@@ -625,10 +711,11 @@ def main():
           #threads.append(thread)
         #for thread in tqdm.tqdm(threads):
         #  thread.join()
-        #for trainer in all_trainers:
-        #  trainer.fresh = False
+        for trainer in fresh_trainers:
+          print('Trainer %s is no longer fresh' % trainer.target)
+          trainer.fresh = False
         first = False
-      print('All done', i)
+        print('All done', i)
       #if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
       #  def sync():
       #    print('Fetching...')
