@@ -8,6 +8,7 @@ import tqdm
 import h5py
 import shutil
 import tempfile
+import traceback
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.cluster_resolver import TPUClusterResolver
@@ -360,13 +361,19 @@ class CommandArgs(object):
     self.cmdr.keys = self.keys_prev
 
 def check_commands():
-  cmdr = commands()
-  return cmdr.check()
+  try:
+    cmdr = commands()
+    return cmdr.check()
+  except:
+    traceback.print_exc()
 
 def check_commands_with_args(*args, **keys):
-  cmdr = commands()
-  with CommandArgs(*args, **keys):
-    return cmdr.check()
+  try:
+    cmdr = commands()
+    with CommandArgs(*args, **keys):
+      return cmdr.check()
+  except:
+    traceback.print_exc()
 
 def add_command(name, action=None, **keys):
   cmdr = commands()
@@ -495,4 +502,8 @@ def save_and_quit():
     print("Saving...")
     run_command('save')
   quit()
+
+@register_command
+def throw_exception():
+  raise Exception("This exception should be caught and logged by the tflex command system")
 
