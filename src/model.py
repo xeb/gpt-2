@@ -285,7 +285,7 @@ def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_t
           if hparams.dtype == tf.bfloat16:
             with tf.contrib.tpu.bfloat16_scope():
               output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
-            output['logits'] = tf.cast(lm_output['logits'], tf.float32)
+            output['logits'] = tf.cast(output['logits'], tf.float32)
           else:
             output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
 
