@@ -629,7 +629,7 @@ def update_trainers(trainers, i, sync_all=False, timeout=30):
       thread.join(timeout=waiting)
   #print('Synchronized.')
 
-
+tflex.update_trainers = update_trainers
 
 def main():
     args = parser.parse_args()
@@ -787,9 +787,10 @@ def main():
     #    trainer.fit()
     #for thread in tqdm.tqdm(parallelize(tflex.get_trainers(), warmup)):
     #  thread.join()
-    if args.fresh_model:
+    tflex.all_trainers = list(tflex.get_trainers())
+    if args.fresh_model and len(tflex.all_trainers) > 1:
       print("Syncing...")
-      update_trainers(list(tflex.get_trainers()), 0, sync_all=True)
+      tflex.update_trainers(tflex.all_trainers, 0, sync_all=True)
     print("Starting...")
     for trainer in tflex.get_trainers():
       print('Trainer %s is no longer fresh (startup trainers)' % trainer.target)
@@ -830,14 +831,14 @@ def main():
           if tflex.cycle is None:
             batches = len(tflex.all_trainers[0].fetch_vars)
             tflex.cycle = list(range(batches))
-            random.shuffle(cycle)
+            random.shuffle(tflex.cycle)
           for index in tqdm.tqdm(tflex.cycle):
             tflex.check_commands()
             if tflex.should_quit():
               break
             tflex.all_trainers = list(tflex.get_trainers())
-            tflex.fresh_trainers = [x for x in tflex.fresh_trainers if x in all_trainers]
-            update_trainers(all_trainers, index)
+            tflex.fresh_trainers = [x for x in tflex.fresh_trainers if x in tflex.all_trainers]
+            tflex.update_trainers(tflex.all_trainers, index)
             time.sleep(tflex.averaging_yield_time) # yield some CPU and network bandwidth
           for trainer in tflex.fresh_trainers:
             print('Trainer %s is no longer fresh' % trainer.target)
