@@ -175,6 +175,7 @@ tflex.load_lightweight_timeout = 10000
 tflex.initialize_timeout = 30000
 tflex.context_load_timeout = 10000
 tflex.ensure_on_init = False
+tflex.tpu_init_timeout = 10000
 
 def eval_lightweight(variable, session, timeout_in_ms=None):
   if timeout_in_ms is None:
@@ -208,6 +209,9 @@ class TrainGPT2(threading.Thread):
           config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
       session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
       tflex.pinned_sessions.append([target, session]) # prevent GC'ing sessions, because the destructor seems to freeze.
+    if args.init_tpu:
+      print('Initializing TPU...', self.target)
+      session.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=tflex.tpu_init_timeout))
 
     #cores = session.list_devices()[2:]
     #core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
@@ -357,9 +361,6 @@ class TrainGPT2(threading.Thread):
   def ensure(self):
     if self.init is not None:
       args = self.args
-      if args.init_tpu:
-        self.say('Initializing TPU...')
-        self.sess.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=10000))
       self.say('Initializing...')
       self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=tflex.initialize_timeout))
       if not args.fresh_model:
