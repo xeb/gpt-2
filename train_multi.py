@@ -457,8 +457,6 @@ def resume_trainer(trainer):
 tflex.resume_trainer = resume_trainer
 
 def load_trainer(trainer, ckpt=None, reset_stats=True):
-  if not tflex.trainer_alive(trainer):
-    return False
   args = trainer.args
   counter = trainer.counter
   saver = trainer.saver
@@ -481,7 +479,6 @@ def load_trainer(trainer, ckpt=None, reset_stats=True):
   print('Loaded in %f seconds' % (t1 - t0))
   if reset_stats:
     tflex.reset_trainer_stats(trainer)
-  return True
 
 tflex.load_trainer = load_trainer
 
