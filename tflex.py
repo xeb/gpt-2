@@ -82,6 +82,26 @@ def truncate_value(variable, value, reshape=True):
   value = value.reshape(shape)
   return value
 
+from tensorflow.core.protobuf import config_pb2
+
+def load(variable, value, session=None, timeout_in_ms=None):
+  session = session or tf.get_default_session()
+  ops = variable.initializer
+  vals = dict([(variable.initializer.inputs[1], value)])
+  #for x, (k, v) in zip(variables, vals.items()):
+  #  print(x.name, x.shape.as_list(), k, v.shape)
+  options = None
+  if timeout_in_ms:
+    options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms)
+  return session.run(ops, vals, options=options)
+
+def eval(variable, session=None, timeout_in_ms=None):
+  session = session or tf.get_default_session()
+  options = None
+  if timeout_in_ms:
+    options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms)
+  return session.run(variable, options=options)
+
 def grab_values(variables, reader, reshape=False):
   for variable in variables:
     name = variable.name.split(':')[0]
@@ -89,13 +109,16 @@ def grab_values(variables, reader, reshape=False):
     value = truncate_value(variable, value, reshape=reshape)
     yield variable, value
 
-def assign_values(variables, values, session=None):
+def assign_values(variables, values, session=None, timeout_in_ms=30000):
   session = session or tf.get_default_session()
   ops = [x.initializer for x in variables]
   vals = dict([(x.initializer.inputs[1], value) for x, value in zip(variables, values)])
   #for x, (k, v) in zip(variables, vals.items()):
   #  print(x.name, x.shape.as_list(), k, v.shape)
-  session.run(ops, vals)
+  options = None
+  if timeout_in_ms:
+    options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms)
+  session.run(ops, vals, options=options)
 
 def load_snapshot(ckpt, session=None, var_list=None, reshape=False):
   session = session or tf.get_default_session()
