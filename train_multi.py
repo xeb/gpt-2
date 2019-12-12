@@ -174,7 +174,8 @@ tflex.eval_lightweight_timeout = 10000
 tflex.load_lightweight_timeout = 10000
 tflex.initialize_timeout = 30000
 tflex.context_load_timeout = 10000
-tflex.ensure_on_init = False
+tflex.ensure_on_init = True
+tflex.release_trainer_sema = True
 tflex.tpu_init_timeout = 10000
 
 def eval_lightweight(variable, session, timeout_in_ms=None):
@@ -432,7 +433,7 @@ def trainer_alive(trainer):
 tflex.trainer_alive = trainer_alive
 
 def trainer_fresh(trainer):
-  return trainer.fresh
+  return trainer_starting(trainer) or trainer.fresh
 
 tflex.trainer_fresh = trainer_fresh
 
@@ -728,7 +729,14 @@ def main():
           trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
           tflex.pinned_trainers.append(trainer)
           if tflex.ensure_on_init:
-            trainer.ensure()
+            if tflex.release_trainer_sema:
+              trainers_sema.release()
+              try:
+                trainer.ensure()
+              finally:
+                trainers_sema.acquire()
+            else:
+              trainer.ensure()
           trainer.start()
           with trainers_lock:
             for existing in tflex.trainers:
