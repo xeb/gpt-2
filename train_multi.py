@@ -712,14 +712,15 @@ def main():
     tflex.pinned_trainers = []
     maxconnections = 3
     #maxconnections = 100
-    trainers_sema = threading.BoundedSemaphore(value=maxconnections)
-    trainers_lock = threading.RLock()
+    tflex.trainers_sema = threading.BoundedSemaphore(value=maxconnections)
+    tflex.trainers_init_sema = threading.BoundedSemaphore(value=maxconnections+2)
+    tflex.trainers_lock = threading.RLock()
     def add_trainer(target, delaying=True):
       #released = False
       try:
         if delaying:
           time.sleep(random.random() * 60)
-        with trainers_lock:
+        with tflex.trainers_lock:
           for existing in tflex.pending_trainers:
             if existing == target:
               return
@@ -728,16 +729,17 @@ def main():
               return
           tflex.pending_trainers.append(target)
         try:
-          with trainers_sema:
+          with tflex.trainers_sema:
             trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
           tflex.pinned_trainers.append(trainer)
           #if tflex.release_trainer_sema:
-          #  trainers_sema.release()
+          #  tflex.trainers_sema.release()
           #  released = True
           if tflex.ensure_on_init:
-            trainer.ensure()
+            with tflex.trainers_init_sema:
+              trainer.ensure()
           trainer.start()
-          with trainers_lock:
+          with tflex.trainers_lock:
             for existing in tflex.trainers:
               if existing.target == target:
                 existing.stopped = True
@@ -752,7 +754,7 @@ def main():
       finally:
         pass
         #if not released:
-        #  trainers_sema.release()
+        #  tflex.trainers_sema.release()
     #start_time = time.time()
     #init_timeout = 10
     #for thread in tqdm.tqdm(parallelize(targets, add_trainer)):
@@ -776,7 +778,7 @@ def main():
     tflex.add_swarm_thread = threading.Thread(target=add_trainers_toplevel)
     tflex.add_swarm_thread.start()
     #maxconnections = 2
-    #trainers_sema = threading.BoundedSemaphore(value=maxconnections)
+    #tflex.trainers_sema = threading.BoundedSemaphore(value=maxconnections)
     #tflex.trainers[0].fresh = False
 
     def get_trainers():
