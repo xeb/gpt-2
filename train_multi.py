@@ -421,7 +421,7 @@ def trainer_starting(trainer):
 tflex.trainer_starting = trainer_starting
 
 def trainer_alive(trainer):
-  if trainer.init:
+  if tflex.trainer_starting(trainer):
     return False
   if hasattr(trainer, "dead"):
     if trainer.dead:
@@ -564,6 +564,9 @@ def assign_values(variables, values, session=None, timeout_in_ms=tflex.write_dea
   session.run(ops, vals, options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms))
 
 def update_trainers(trainers, i, sync_all=False, timeout=30):
+  trainers = [x for x in trainers]
+  if len(trainers) <= 0:
+    return
   #trainers = [x for x in all_trainers if not x.aborted()]
   #print('Fetching...')
   accum = {}
@@ -571,7 +574,7 @@ def update_trainers(trainers, i, sync_all=False, timeout=30):
   lock = threading.Lock()
   threads = []
   for trainer in trainers:
-    if trainer.fresh:
+    if tflex.trainer_fresh(trainer):
       continue
     def thunk(trainer, lock, index):
       for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
