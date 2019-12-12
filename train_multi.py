@@ -209,66 +209,65 @@ class TrainGPT2(threading.Thread):
       session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
       tflex.pinned_sessions.append([target, session]) # prevent GC'ing sessions, because the destructor seems to freeze.
 
-    with session.as_default():
-      #cores = session.list_devices()[2:]
-      #core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
-      #with tf.device(core):
-      if True:
-        #context = tf.placeholder(tf.int32, [args.batch_size, None])
-        context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
-        context_in = randomize(context, hparams, args.noise)
-        output = model.model(hparams=hparams, X=context_in, scope=scope)
-        loss = tf.reduce_mean(
-          tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=context[:, 1:], logits=output['logits'][:, :-1]))
+    #cores = session.list_devices()[2:]
+    #core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
+    #with tf.device(core):
+    if True:
+      #context = tf.placeholder(tf.int32, [args.batch_size, None])
+      context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
+      context_in = randomize(context, hparams, args.noise)
+      output = model.model(hparams=hparams, X=context_in, scope=scope)
+      loss = tf.reduce_mean(
+        tf.nn.sparse_softmax_cross_entropy_with_logits(
+          labels=context[:, 1:], logits=output['logits'][:, :-1]))
 
-      with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
-        global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
-        current_step = counter
-        #load_lightweight(global_step, current_step.value, session=session)
-        if args.learning_rate_cos:
-            lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
-                warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
-        else:
-            lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
-            #load_lightweight(lr,args.learning_rate, session=session)
-        wd = tflex.get_variable('weight_decay') or tf.get_variable('weight_decay', shape=(), dtype=tf.float32, trainable=False)
+    with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
+      global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
+      current_step = counter
+      #load_lightweight(global_step, current_step.value, session=session)
+      if args.learning_rate_cos:
+          lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
+              warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
+      else:
+          lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
+          #load_lightweight(lr,args.learning_rate, session=session)
+      wd = tflex.get_variable('weight_decay') or tf.get_variable('weight_decay', shape=(), dtype=tf.float32, trainable=False)
 
-        use_locking=False
-        if args.optimizer == 'adam':
-          opt = tf.train.AdamOptimizer(learning_rate=lr, use_locking=use_locking)
-        if args.optimizer == 'adamw':
-          opt = tflex_optimizers.AdamWOptimizer(learning_rate=lr, use_locking=use_locking, weight_decay=wd)
-        elif args.optimizer == 'sgd':
-          opt = tf.train.GradientDescentOptimizer(learning_rate=lr, use_locking=use_locking)
-        elif args.optimizer == 'ada':
-          import tensor2tensor.utils.optimize
-          from tensor2tensor.utils import hparam
-          import tensor2tensor.models.research
-          from tensor2tensor.utils import registry
-          ada_hparams = registry.hparams('afx_mimic_adam')
-          ada_hparams.optimizer_adafactor_beta1 = 0.0
-          ada_hparams.optimizer_adafactor_factored = True
-          opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
-        elif args.optimizer == 'adaw':
-          opt = tflex_optimizers.AdafactorWOptimizer(learning_rate=lr, use_locking=use_locking, weight_decay=wd)
-        else:
-          exit('Bad optimizer:', args.optimizer)
+      use_locking=False
+      if args.optimizer == 'adam':
+        opt = tf.train.AdamOptimizer(learning_rate=lr, use_locking=use_locking)
+      if args.optimizer == 'adamw':
+        opt = tflex_optimizers.AdamWOptimizer(learning_rate=lr, use_locking=use_locking, weight_decay=wd)
+      elif args.optimizer == 'sgd':
+        opt = tf.train.GradientDescentOptimizer(learning_rate=lr, use_locking=use_locking)
+      elif args.optimizer == 'ada':
+        import tensor2tensor.utils.optimize
+        from tensor2tensor.utils import hparam
+        import tensor2tensor.models.research
+        from tensor2tensor.utils import registry
+        ada_hparams = registry.hparams('afx_mimic_adam')
+        ada_hparams.optimizer_adafactor_beta1 = 0.0
+        ada_hparams.optimizer_adafactor_factored = True
+        opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
+      elif args.optimizer == 'adaw':
+        opt = tflex_optimizers.AdafactorWOptimizer(learning_rate=lr, use_locking=use_locking, weight_decay=wd)
+      else:
+        exit('Bad optimizer:', args.optimizer)
 
-        all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
-        train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
+      all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
+      train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
 
-        parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
-        print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
+      parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
+      print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
 
-        opt_grads = tf.gradients(loss, train_vars)
-        opt_grads = list(zip(opt_grads, train_vars))
-        opt_apply = opt.apply_gradients(opt_grads)
-        summary_loss = tf.summary.scalar('loss', loss)
-        summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
-        global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
-        fetch_vars = list(tflex.split_by_params(global_vars))
-        #fetch_vars = list(tflex.split_by_params(train_vars))
+      opt_grads = tf.gradients(loss, train_vars)
+      opt_grads = list(zip(opt_grads, train_vars))
+      opt_apply = opt.apply_gradients(opt_grads)
+      summary_loss = tf.summary.scalar('loss', loss)
+      summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
+      global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
+      fetch_vars = list(tflex.split_by_params(global_vars))
+      #fetch_vars = list(tflex.split_by_params(train_vars))
         #fetch_vars = list(tflex.split_by_params(all_vars))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
