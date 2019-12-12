@@ -26,6 +26,7 @@ from glob import glob
 import re
 import tflex
 import tflex_sgdr
+import tflex_optimizers
 
 import pytz
 from datetime import datetime, timezone
@@ -55,7 +56,8 @@ parser.add_argument('--learning_rate_initial_step', type=int, default=0, help='L
 parser.add_argument('--accumulate_gradients', metavar='N', type=int, default=1, help='Accumulate gradients across N minibatches.')
 parser.add_argument('--memory_saving_gradients', default=False, action='store_true', help='Use gradient checkpointing to reduce vram usage.')
 parser.add_argument('--only_train_transformer_layers', default=False, action='store_true', help='Restrict training to the transformer blocks.')
-parser.add_argument('--optimizer', type=str, default='adam', help='Optimizer. <adam|sgd|ada>.')
+parser.add_argument('--optimizer', type=str, default='adamw', help='Optimizer. <adam|adamw|sgd|ada>.')
+parser.add_argument('--weight_decay', metavar='WD', type=float, default=1e-4, help='Weight decay for AdamW/AdaW')
 parser.add_argument('--noise', type=float, default=0.0, help='Add noise to input training data to regularize against typos.')
 
 parser.add_argument('--top_k', type=int, default=40, help='K for top-k sampling.')
@@ -215,10 +217,13 @@ class TrainGPT2(threading.Thread):
         else:
             lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
             #lr.load(args.learning_rate, session=session)
+        wd = tflex.get_variable('weight_decay') or tf.get_variable('weight_decay', shape=(), dtype=tf.float32, trainable=False)
 
         use_locking=False
         if args.optimizer == 'adam':
           opt = tf.train.AdamOptimizer(learning_rate=lr, use_locking=use_locking)
+        if args.optimizer == 'adamw':
+          opt = tflex_optimizers.AdamWOptimizer(learning_rate=lr, use_locking=use_locking, weight_decay=wd)
         elif args.optimizer == 'sgd':
           opt = tf.train.GradientDescentOptimizer(learning_rate=lr, use_locking=use_locking)
         elif args.optimizer == 'ada':
@@ -230,6 +235,8 @@ class TrainGPT2(threading.Thread):
           ada_hparams.optimizer_adafactor_beta1 = 0.0
           ada_hparams.optimizer_adafactor_factored = True
           opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
+        elif args.optimizer == 'adaw':
+          opt = tflex_optimizers.AdafactorWOptimizer(learning_rate=lr, use_locking=use_locking, weight_decay=wd)
         else:
           exit('Bad optimizer:', args.optimizer)
 
@@ -250,7 +257,8 @@ class TrainGPT2(threading.Thread):
         #fetch_vars = list(tflex.split_by_params(all_vars))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
-      summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
+      summary_wd = tf.summary.scalar('weight_decay', wd)
+      summaries = tf.summary.merge([summary_lr, summary_wd, summary_loss, summary_perp])
       run_name = args.run_name + "_" + self.target
       run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
       self.summary_log = tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
@@ -267,6 +275,7 @@ class TrainGPT2(threading.Thread):
       self.opt_apply = opt_apply
       self.sess = session
       self.lr = lr
+      self.wd = wd
       self.counter = current_step.incr()
       self.stopped = False
       self.paused = False
@@ -312,7 +321,9 @@ class TrainGPT2(threading.Thread):
     global_step = self.global_step
     args = self.args
     lr = self.lr
+    wd = self.wd
     sess = self.sess
+    weight_decay = args.weight_decay
     if not args.learning_rate_cos:
       if step is None:
         step = global_step.eval(session=sess)
@@ -321,7 +332,10 @@ class TrainGPT2(threading.Thread):
       if callable(rate):
         rate = rate(step)
       lr.load(rate, session=sess)
-    return lr.eval(session=sess)
+    wd.load(weight_decay, session=sess)
+    v_rate = lr.eval(session=sess)
+    v_weight_decay = wd.eval(session=sess)
+    return v_rate, v_weight_decay
   
   def run(self):
     while not self.stopped:
@@ -331,83 +345,165 @@ class TrainGPT2(threading.Thread):
       time.sleep(0.1)
 
   def ensure(self):
-    with self.sess.as_default():
-      if self.init is not None:
-        args = self.args
-        if args.init_tpu:
-          self.say('Initializing TPU...')
-          self.sess.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=10000))
-        self.say('Initializing...')
-        self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=30000))
-        if not args.fresh_model:
-          self.say('Restoring...')
-          saver = self.saver
-          if args.restore_from == 'latest':
-            ckpt = tflex.latest_checkpoint(os.path.join(CHECKPOINT_DIR, args.run_name))
-            if ckpt is None:
-              # Get fresh GPT weights if new run.
-              ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
-          elif args.restore_from == 'fresh':
-            ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
-          else:
-            ckpt = tflex.latest_checkpoint(args.restore_from)
-          print('Loading snapshot %s...' % ckpt)
-          t0 = time.time()
-          if not args.fresh_model:
-            saver.restore(self.sess, ckpt)
-          t1 = time.time()
-          print('Loaded in %f seconds' % (t1 - t0))
-        #global_step.load(current_step, session=session)
-        #lr.load(args.learning_rate, session=session)
-        self.say('Initialized.')
-        self.init = None
+    if self.init is not None:
+      args = self.args
+      if args.init_tpu:
+        self.say('Initializing TPU...')
+        self.sess.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=10000))
+      self.say('Initializing...')
+      self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=30000))
+      if not args.fresh_model:
+        tflex.load_trainer(self)
+      #global_step.load(current_step, session=session)
+      #lr.load(args.learning_rate, session=session)
+      self.say('Initialized.')
+      self.init = None
 
   def fit(self):
     self.ensure()
-    with self.sess.as_default():
-      self.global_step.load(self.counter, session=self.sess)
-      v_rate = self.update_lr()
-      self.say('Generating batch...')
-      batch = self.sample_batch()
-      print(repr(self.enc.decode(batch[0]))[0:150] + '...')
-      self.say('Loading context...')
-      self.context.load(batch, session=self.sess)
-      self.say('Running opt_apply...')
-      (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
-      self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
-                       self.avg_loss[1] * 0.99 + 1.0]
-      v_perp = math.exp(v_loss)
-      self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
-                       self.avg_perp[1] * 0.99 + 1.0]
-      now = time.time()
-      print('{stamp} {target:16s} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.7f} step={step}'
-          .format(
-              stamp=timestamp(),
-              target=self.target[-16:],
-              counter=self.counter,
-              time=now - self.start_time,
-              delta=now - self.prev_time,
-              ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
-              rate=v_rate,
-              loss=v_loss,
-              perp=v_perp,
-              avgloss=self.avg_loss[0] / self.avg_loss[1],
-              avgperp=self.avg_perp[0] / self.avg_perp[1],
-              step=self.counter,
-              ))
-      self.prev_time = now
-      self.summary_log.add_summary(v_summary, self.counter)
-      self.summary_log.flush()
-      self.counter = self.current_step.incr()
-      #self.global_step.load(self.counter, session=self.sess)
+    self.global_step.load(self.counter, session=self.sess)
+    v_rate, v_weight_decay = self.update_lr()
+    self.say('Generating batch...')
+    batch = self.sample_batch()
+    print(repr(self.enc.decode(batch[0]))[0:150] + '...')
+    self.say('Loading context...')
+    self.context.load(batch, session=self.sess)
+    self.say('Running opt_apply...')
+    (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
+    self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
+                     self.avg_loss[1] * 0.99 + 1.0]
+    v_perp = math.exp(v_loss)
+    self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
+                     self.avg_perp[1] * 0.99 + 1.0]
+    now = time.time()
+    print('{stamp} {target:16s} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.7f} decay={decay:0.7f} step={step}'
+        .format(
+            stamp=timestamp(),
+            target=self.target[-16:],
+            counter=self.counter,
+            time=now - self.start_time,
+            delta=now - self.prev_time,
+            ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
+            rate=v_rate,
+            decay=v_weight_decay,
+            loss=v_loss,
+            perp=v_perp,
+            avgloss=self.avg_loss[0] / self.avg_loss[1],
+            avgperp=self.avg_perp[0] / self.avg_perp[1],
+            step=self.counter,
+            ))
+    self.prev_time = now
+    self.summary_log.add_summary(v_summary, self.counter)
+    self.summary_log.flush()
+    self.counter = self.current_step.incr()
+    #self.global_step.load(self.counter, session=self.sess)
 
     return v_loss
 
   def variables(self, index):
     return self.fetch_vars[index % len(self.fetch_vars)]
 
+def trainer_alive(trainer):
+  if hasattr(trainer, "dead"):
+    if trainer.dead:
+      return False
+  if not trainer.is_alive():
+    return False
+  return True
+
+tflex.trainer_alive = trainer_alive
+
+def trainer_fresh(trainer):
+  return trainer.fresh
+
+tflex.trainer_fresh = trainer_fresh
+
+def reset_trainer_stats(trainer):
+  if not tflex.trainer_alive(trainer):
+    return False
+  x = trainer
+  x.avg_loss[0] = x.avg_loss[1] = x.avg_perp[0] = x.avg_perp[1] = 0.0
+  x.start_time = time.time()
+  x.prev_time = x.start_time
+  return True
+
+tflex.reset_trainer_stats = reset_trainer_stats
+
+def resume_trainer(trainer):
+  if not tflex.trainer_alive(trainer):
+    return False
+  trainer.paused = False
+  return True
+
+tflex.resume_trainer = resume_trainer
+
+def load_trainer(trainer, ckpt=None, reset_stats=True):
+  if not tflex.trainer_alive(trainer):
+    return False
+  args = trainer.args
+  counter = trainer.counter
+  saver = trainer.saver
+  sess = trainer.sess
+  trainer.say('Restoring...')
+  if ckpt is None:
+    if args.restore_from == 'latest':
+      ckpt = tflex.latest_checkpoint(os.path.join(CHECKPOINT_DIR, args.run_name))
+      if ckpt is None:
+        # Get fresh GPT weights if new run.
+        ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
+    elif args.restore_from == 'fresh':
+      ckpt = tflex.latest_checkpoint(os.path.join('models', args.model_name))
+    else:
+      ckpt = tflex.latest_checkpoint(args.restore_from)
+  print('Loading snapshot %s...' % ckpt)
+  t0 = time.time()
+  saver.restore(sess, ckpt)
+  t1 = time.time()
+  print('Loaded in %f seconds' % (t1 - t0))
+  if reset_stats:
+    tflex.reset_trainer_stats(trainer)
+  return True
+
+tflex.load_trainer = load_trainer
+
+def load_trainers(trainers=None, timeout=None):
+  if trainers is None:
+    trainers = list(tflex.get_trainers())
+  trainers = [x for x in trainers if tflex.trainer_alive(x)]
+  if timeout is None:
+    timeout = len(trainers) * 30.0
+  print('Loading %d trainers, max timeout %f' % (len(trainers), timeout))
+  start_time = time.time()
+  for thread in tqdm.tqdm(parallelize(trainers, tflex.load_trainer)):
+    elapsed = (time.time() - start_time)
+    waiting = timeout - elapsed
+    if waiting > 0:
+      thread.join(timeout=waiting)
+
+tflex.load_trainers = load_trainers
+
+def avgperp(trainer):
+  return trainer.avg_perp[0] / trainer.avg_perp[1]
+
+tflex.avgperp = avgperp
+
+def avgloss(trainer):
+  return trainer.avg_loss[0] / trainer.avg_loss[1]
+
+tflex.avgloss = avgloss
+
+@tflex.register_command
+def print_trainers(trainers=None):
+  if trainers is None:
+    trainers = list(tflex.get_trainers())
+  trainers = [x for x in trainers if tflex.trainer_alive(x)]
+  for x in list(sorted(trainers, key=tflex.avgloss)):
+    print(x.start_time, x.paused, tflex.trainer_fresh(x), tflex.trainer_alive(x), time.time() - x.start_time, x.target, tflex.avgloss(x), tflex.avgperp(x));
+
+tflex.print_trainers = print_trainers
+
 def save_trainer(trainer):
-  if not trainer.is_alive() or trainer.fresh:
+  if not tflex.trainer_alive(trainer) or tflex.trainer_fresh(trainer):
     return False
   args = trainer.args
   counter = trainer.counter
@@ -590,6 +686,7 @@ def main():
     if len(targets) <= 0:
       targets.append('auto')
     random.shuffle(targets)
+    tflex.targets = targets
     traincounter = TrainCounter(value=counter)
     trainers = []
     pending_trainers = []
@@ -607,7 +704,7 @@ def main():
               return
           pending_trainers.append(target)
           for existing in trainers:
-            if existing.target == target and existing.is_alive():
+            if existing.target == target and existing.alive:
               return
         try:
           trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
@@ -632,7 +729,9 @@ def main():
     #  waiting = init_timeout - elapsed
     #  if waiting > 0:
     #    thread.join(timeout=waiting)
-    def add_trainers():
+    def add_trainers(targets=None):
+      if targets is None:
+        targets = tflex.targets
       for thread in tqdm.tqdm(parallelize(targets, add_trainer)):
         thread.join()
     tflex.adding_trainers = False
@@ -648,10 +747,14 @@ def main():
     #maxconnections = 2
     #trainers_sema = threading.BoundedSemaphore(value=maxconnections)
     #trainers[0].fresh = False
+    tflex.trainers = trainers
+
     def get_trainers():
-      for trainer in trainers:
-        if trainer.alive:
+      for trainer in tflex.trainers:
+        if tflex.trainer_alive(trainer):
           yield trainer
+
+    tflex.get_trainers = get_trainers
 
     @tflex.register_command
     def save():
@@ -676,6 +779,7 @@ def main():
     sync_thread = None
     first = True
     tflex.averaging_yield_time = 1.0 # was 3.0
+    tflex.averaging = True
     while True:
       tflex.check_commands()
       if tflex.should_quit():
@@ -698,30 +802,33 @@ def main():
         time.sleep(1.0)
       else:
         i += 1
-        batches = len(all_trainers[0].fetch_vars)
-        fresh_trainers = all_trainers[:]
-        cycle = list(range(batches))
-        random.shuffle(cycle)
-        for index in tqdm.tqdm(cycle):
-          tflex.check_commands()
-          if tflex.should_quit():
-            break
-          all_trainers = list(get_trainers())
-          fresh_trainers = [x for x in fresh_trainers if x in all_trainers]
-          update_trainers(all_trainers, index)
-          time.sleep(tflex.averaging_yield_time) # yield some CPU and network bandwidth
-          #def thunk(trainers, index):
-          #  update_trainers(trainers, index)
-          #thread = threading.Thread(target=thunk, args=(all_trainers, index))
-          #thread.start()
-          #threads.append(thread)
-        #for thread in tqdm.tqdm(threads):
-        #  thread.join()
-        for trainer in fresh_trainers:
-          print('Trainer %s is no longer fresh' % trainer.target)
-          trainer.fresh = False
-        first = False
-        print('All done', i)
+        if not tflex.averaging:
+          time.sleep(1.0)
+        else:
+          batches = len(all_trainers[0].fetch_vars)
+          fresh_trainers = all_trainers[:]
+          cycle = list(range(batches))
+          random.shuffle(cycle)
+          for index in tqdm.tqdm(cycle):
+            tflex.check_commands()
+            if tflex.should_quit():
+              break
+            all_trainers = list(get_trainers())
+            fresh_trainers = [x for x in fresh_trainers if x in all_trainers]
+            update_trainers(all_trainers, index)
+            time.sleep(tflex.averaging_yield_time) # yield some CPU and network bandwidth
+            #def thunk(trainers, index):
+            #  update_trainers(trainers, index)
+            #thread = threading.Thread(target=thunk, args=(all_trainers, index))
+            #thread.start()
+            #threads.append(thread)
+          #for thread in tqdm.tqdm(threads):
+          #  thread.join()
+          for trainer in fresh_trainers:
+            print('Trainer %s is no longer fresh' % trainer.target)
+            trainer.fresh = False
+          first = False
+          print('All done', i)
       #if len(list(get_trainers())) > 1 and (i % 10 == 0 or i == 1):
       #  def sync():
       #    print('Fetching...')
