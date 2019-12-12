@@ -595,6 +595,7 @@ def main():
     trainers_lock = threading.RLock()
     def add_trainer(target):
       with trainers_sema:
+        time.sleep(random.random() * 60)
         with trainers_lock:
           for existing in pending_trainers:
             if existing == target:
