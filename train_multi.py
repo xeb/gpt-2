@@ -743,7 +743,6 @@ def main():
             for existing in tflex.trainers:
               if existing.target == target:
                 existing.stopped = True
-                tflex.trainers.remove(existing)
                 break
             if len(tflex.trainers) <= 0:
               print('Trainer %s is no longer fresh (first trainer)' % trainer.target)
