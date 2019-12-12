@@ -714,9 +714,11 @@ def main():
     #maxconnections = 100
     trainers_sema = threading.BoundedSemaphore(value=maxconnections)
     trainers_lock = threading.RLock()
-    def add_trainer(target):
-      with trainers_sema:
-        time.sleep(random.random() * 60)
+    def add_trainer(target, delaying=True):
+      #released = False
+      try:
+        if delaying:
+          time.sleep(random.random() * 60)
         with trainers_lock:
           for existing in tflex.pending_trainers:
             if existing == target:
@@ -726,17 +728,14 @@ def main():
               return
           tflex.pending_trainers.append(target)
         try:
-          trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
+          with trainers_sema:
+            trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
           tflex.pinned_trainers.append(trainer)
+          #if tflex.release_trainer_sema:
+          #  trainers_sema.release()
+          #  released = True
           if tflex.ensure_on_init:
-            if tflex.release_trainer_sema:
-              trainers_sema.release()
-              try:
-                trainer.ensure()
-              finally:
-                trainers_sema.acquire()
-            else:
-              trainer.ensure()
+            trainer.ensure()
           trainer.start()
           with trainers_lock:
             for existing in tflex.trainers:
@@ -750,6 +749,10 @@ def main():
             tflex.trainers.append(trainer)
         finally:
           tflex.pending_trainers.remove(target)
+      finally:
+        pass
+        #if not released:
+        #  trainers_sema.release()
     #start_time = time.time()
     #init_timeout = 10
     #for thread in tqdm.tqdm(parallelize(targets, add_trainer)):
