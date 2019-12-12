@@ -173,6 +173,7 @@ class TrainGPT2(threading.Thread):
   def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=tflex.session_timeout_in_ms, session=None, counter=None):
     super(TrainGPT2, self).__init__()
     self.fresh = True
+    self.dead = False
     self.args = args
     self.hparams = hparams
     self.sampler = sampler
@@ -281,6 +282,10 @@ class TrainGPT2(threading.Thread):
       self.avg_perp = [0.0, 0.0]
     self.start_time = time.time()
     self.prev_time = self.start_time
+
+  @property
+  def alive(self):
+    return not self.dead and self.is_alive()
     
   def aborted(self):
     try:
@@ -645,7 +650,7 @@ def main():
     #trainers[0].fresh = False
     def get_trainers():
       for trainer in trainers:
-        if trainer.is_alive():
+        if trainer.alive:
           yield trainer
 
     @tflex.register_command
