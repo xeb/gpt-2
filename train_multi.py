@@ -406,6 +406,7 @@ class TrainGPT2(threading.Thread):
     self.summary_log.add_summary(v_summary, self.counter)
     self.summary_log.flush()
     self.counter = self.current_step.incr()
+    self.start_count = self.counter
     #load_lightweight(self.global_step, self.counter, session=self.sess)
 
     return v_loss
@@ -444,6 +445,7 @@ def reset_trainer_stats(trainer):
   x.avg_loss[0] = x.avg_loss[1] = x.avg_perp[0] = x.avg_perp[1] = 0.0
   x.start_time = time.time()
   x.prev_time = x.start_time
+  x.start_count = x.counter
   return True
 
 tflex.reset_trainer_stats = reset_trainer_stats
