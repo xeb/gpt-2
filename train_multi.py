@@ -177,6 +177,7 @@ tflex.context_load_timeout = 10000
 tflex.ensure_on_init = True
 tflex.release_trainer_sema = True
 tflex.tpu_init_timeout = 10000
+tflex.use_global_data_sampler = False
 
 def eval_lightweight(variable, session, timeout_in_ms=None):
   if timeout_in_ms is None:
@@ -753,16 +754,14 @@ def main():
     tflex.trainers = []
     tflex.pending_trainers = []
     tflex.pinned_trainers = []
-    maxconnections = 3
-    #maxconnections = 100
-    tflex.trainers_sema = threading.BoundedSemaphore(value=maxconnections)
-    tflex.trainers_init_sema = threading.BoundedSemaphore(value=maxconnections+2)
+    tflex.trainers_sema = threading.BoundedSemaphore(value=3)
+    tflex.trainers_init_sema = threading.BoundedSemaphore(value=100)
     tflex.trainers_lock = threading.RLock()
     def add_trainer(target, delaying=True):
       #released = False
       try:
-        if delaying:
-          time.sleep(random.random() * 60)
+        #if delaying:
+        #  time.sleep(random.random() * 60)
         with tflex.trainers_lock:
           for existing in tflex.pending_trainers:
             if existing == target:
@@ -773,7 +772,10 @@ def main():
           tflex.pending_trainers.append(target)
         try:
           with tflex.trainers_sema:
-            trainer = TrainGPT2(args=args, hparams=hparams, sampler=data_sampler, enc=enc, target=target, counter=traincounter)
+            sampler = data_sampler
+            if not tflex.use_global_data_sampler:
+              sampler = make_sampler(dataset=args.dataset, enc=enc, seed=seed, combine=args.combine)
+            trainer = TrainGPT2(args=args, hparams=hparams, sampler=sampler, enc=enc, target=target, counter=traincounter)
           tflex.pinned_trainers.append(trainer)
           #if tflex.release_trainer_sema:
           #  tflex.trainers_sema.release()
