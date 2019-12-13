@@ -271,8 +271,8 @@ class TrainGPT2(threading.Thread):
       summary_loss = tf.summary.scalar('loss', loss)
       summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
       global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
-      fetch_vars = list(tflex.split_by_params(global_vars))
-      #fetch_vars = list(tflex.split_by_params(train_vars))
+      fetch_global_vars = list(tflex.split_by_params(global_vars))
+      fetch_train_vars = list(tflex.split_by_params(train_vars))
         #fetch_vars = list(tflex.split_by_params(all_vars))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
@@ -289,7 +289,9 @@ class TrainGPT2(threading.Thread):
       self.all_vars = all_vars
       self.train_vars = train_vars
       self.global_vars = global_vars
-      self.fetch_vars = fetch_vars
+      self.fetch_global_vars = fetch_global_vars
+      self.fetch_train_vars = fetch_train_vars
+      self.fetch_vars = self.fetch_train_vars if args.optimizer in ['adam', 'adamw'] else self.fetch_global_vars
       self.opt_grads = opt_grads
       self.opt_apply = opt_apply
       self.sess = session
