@@ -178,6 +178,7 @@ tflex.ensure_on_init = True
 tflex.release_trainer_sema = True
 tflex.tpu_init_timeout = 10000
 tflex.use_global_data_sampler = False
+tflex.shuffle_cycles = True
 
 def eval_lightweight(variable, session, timeout_in_ms=None):
   if timeout_in_ms is None:
@@ -885,7 +886,7 @@ def main():
           time.sleep(1.0)
         else:
           tflex.fresh_trainers = tflex.all_trainers[:]
-          if tflex.cycle is None:
+          if tflex.cycle is None or tflex.shuffle_cycles:
             batches = len(tflex.all_trainers[0].fetch_vars)
             tflex.cycle = list(range(batches))
             random.shuffle(tflex.cycle)
