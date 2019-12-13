@@ -501,22 +501,42 @@ def load_trainers(trainers=None, timeout=None):
 tflex.load_trainers = load_trainers
 
 def avgperp(trainer):
-  return trainer.avg_perp[0] / trainer.avg_perp[1]
+  return trainer.avg_perp[0] / (trainer.avg_perp[1] or 1.0)
 
 tflex.avgperp = avgperp
 
 def avgloss(trainer):
-  return trainer.avg_loss[0] / trainer.avg_loss[1]
+  return trainer.avg_loss[0] / (trainer.avg_loss[1] or 1.0)
 
 tflex.avgloss = avgloss
+
+def sorted_trainers(trainers):
+  return list(sorted(trainers, key=tflex.avgloss))
+
+tflex.sorted_trainers = sorted_trainers
+
+def print_trainer(x):
+  ticks = 'ticks=%2.3f' % x.avg_loss[1]
+  avgl = 'loss=%2.3f' % tflex.avgloss(x)
+  avgp = 'perp=%2.3f' % tflex.avgperp(x)
+  elapsed = 'elapsed=%ds' % int(x.prev_time - x.start_time)
+  start = 'start=%d' % int(x.start_time)
+  paused = 'paused=%s' % repr(x.paused)
+  fresh = 'fresh=%s' % repr(tflex.trainer_fresh(x))
+  alive = 'alive=%s' % repr(tflex.trainer_alive(x))
+  print(x.target, start, paused, fresh, alive, elapsed, avgl, avgp, ticks);
+  return x
+
+tflex.print_trainer = print_trainer
 
 @tflex.register_command
 def print_trainers(trainers=None):
   if trainers is None:
     trainers = list(tflex.get_trainers())
   trainers = [x for x in trainers if tflex.trainer_alive(x)]
-  for x in list(sorted(trainers, key=tflex.avgloss)):
-    print(x.start_time, x.paused, tflex.trainer_fresh(x), tflex.trainer_alive(x), time.time() - x.start_time, x.target, tflex.avgloss(x), tflex.avgperp(x));
+  for x in tflex.sorted_trainers(trainers)[::-1]:
+    tflex.print_trainer(x)
+  print(len([x for x in trainers if not tflex.trainer_fresh(x) and tflex.trainer_alive(x)]), "trainers")
 
 tflex.print_trainers = print_trainers
 
