@@ -242,7 +242,7 @@ class TrainGPT2(threading.Thread):
       use_locking=False
       if args.optimizer == 'adam':
         opt = tf.train.AdamOptimizer(learning_rate=lr, use_locking=use_locking)
-      if args.optimizer == 'adamw':
+      elif args.optimizer == 'adamw':
         opt = tflex_optimizers.AdamWOptimizer(learning_rate=lr, use_locking=use_locking, weight_decay=wd)
       elif args.optimizer == 'sgd':
         opt = tf.train.GradientDescentOptimizer(learning_rate=lr, use_locking=use_locking)
