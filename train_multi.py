@@ -558,11 +558,30 @@ def save_trainer(trainer):
       fp.write(str(counter) + '\n')
   return True
 
-def save_trainers(trainers):
-  for trainer in trainers:
+tflex.save_trainer = save_trainer
+
+def rank_trainers(trainers=None):
+  if trainers is None:
+    trainers = [x for x in tflex.get_trainers()]
+  return list(sorted(trainers, key=lambda x: x.avg_loss[1], reverse=True))
+
+tflex.rank_trainers = rank_trainers
+
+def save_trainers(trainers=None):
+  for trainer in tflex.rank_trainers(trainers):
+    print('-----')
+    print('Saving:')
+    print_trainer(trainer)
+    print('-----')
     if save_trainer(trainer):
+      print('-----')
+      print_trainer(trainer)
+      print('Saved')
+      print('-----')
       return True
   return False
+
+tflex.save_trainers = save_trainers
 
 def parallelize(xs, thunk, *args):
   threads = []
