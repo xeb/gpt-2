@@ -104,17 +104,17 @@ def nextchar(f):
   return b.decode('utf-8')
 
 def nextchars(f, n):
-  s = ""
+  s = []
   i = 0
   while i < n:
     c = nextchar(f)
     if c is None:
       break
     if c != u'\r':
-      s += c
+      s.append(c)
       i += 1
   if len(s) > 0:
-    return s
+    return ''.join(s)
 
 def grab_tokens(f, enc, n):
   n += 4
