@@ -514,7 +514,9 @@ def avgloss(trainer):
 
 tflex.avgloss = avgloss
 
-def sorted_trainers(trainers):
+def sorted_trainers(trainers=None):
+  if trainers is None:
+    trainers = [x for x in tflex.get_trainers()]
   return list(sorted(trainers, key=tflex.avgloss))
 
 tflex.sorted_trainers = sorted_trainers
@@ -586,6 +588,23 @@ def save_trainers(trainers=None):
   return False
 
 tflex.save_trainers = save_trainers
+
+@tflex.register_command
+def save_lowest_loss(trainers=None):
+  for trainer in tflex.sorted_trainers(trainers):
+    print('-----')
+    print('Saving:')
+    print_trainer(trainer)
+    print('-----')
+    if save_trainer(trainer):
+      print('-----')
+      print_trainer(trainer)
+      print('Saved')
+      print('-----')
+      return True
+  return False
+
+tflex.save_trainers = save_lowest_loss
 
 def parallelize(xs, thunk, *args):
   threads = []
