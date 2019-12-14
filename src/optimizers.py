@@ -354,3 +354,6 @@ def cast_like(x, y):
                         x.device, cast_x.device)
     return cast_x
 
+AdafactorWOptimizer = tf.contrib.opt.extend_with_decoupled_weight_decay(AdafactorOptimizer)
+AdamWOptimizer = tf.contrib.opt.extend_with_decoupled_weight_decay(tf.train.AdamOptimizer)
+

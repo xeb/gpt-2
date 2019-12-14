@@ -6,6 +6,7 @@ from tensorflow.contrib.training import HParams
 from tensorflow.python.ops import gradients
 import memory_saving_gradients
 import math
+import sample
 
 def default_hparams():
     return HParams(
@@ -123,11 +124,14 @@ def attn(x, scope, n_state, *, past, hparams):
 
     def split_heads(x):
         # From [batch, sequence, features] to [batch, heads, sequence, features]
-        return tf.transpose(split_states(x, hparams.n_head), [0, 2, 1, 3])
+        x = split_states(x, hparams.n_head)
+        return tf.transpose(x, [0, 2, 1, 3])
 
     def merge_heads(x):
         # Reverse of split_heads
-        return merge_states(tf.transpose(x, [0, 2, 1, 3]))
+        x = tf.transpose(x, [0, 2, 1, 3])
+        x = merge_states(x)
+        return x
 
     def mask_attn_weights(w):
         # w has shape [batch, heads, dst_sequence, src_sequence], where information flows from src to dst.
@@ -151,7 +155,11 @@ def attn(x, scope, n_state, *, past, hparams):
     dtype = hparams.dtype if hparams else tf.float32
     with tf.variable_scope(scope, dtype=dtype):
         c = conv1d(x, 'c_attn', n_state*3, hparams=hparams)
-        q, k, v = map(split_heads, tf.split(c, 3, axis=2))
+        q, k, v = map(split_heads, tf.split(c, 3, axis=-1))
+        #c_q = conv1d(x, 'c_attn_q', n_state, hparams=hparams)
+        #c_k = conv1d(x, 'c_attn_k', n_state, hparams=hparams)
+        #c_v = conv1d(x, 'c_attn_v', n_state, hparams=hparams)
+        #q, k, v = map(split_heads, [c_q, c_k, c_v])
         present = tf.stack([k, v], axis=1)
         if past is not None:
             pk, pv = tf.unstack(past, axis=1)
@@ -252,9 +260,23 @@ def randomize(context, hparams, p):
 class Namespace(object):
   pass
 
-def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, global_step=None, session=None, scope='model', max_cores=8, *args, **kws):
+from contextlib import contextmanager
+
+@contextmanager
+def nullcontext(enter_result=None):
+    yield enter_result
+
+def bfloat16context(hparams):
+  if hparams.dtype == tf.bfloat16:
+    return tf.contrib.tpu.bfloat16_scope()
+  else:
+    return nullcontext()
+
+def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, global_step=None, session=None, scope='model', max_cores=8, length=None, encoder=None, temperature=1, top_k=0, top_p=0.0, *args, **kws):
     if session is None:
         session = tf.get_default_session()
+    if length is None:
+        length = hparams.n_ctx
     results = {}
     results['shards'] = []
     #results = {}
@@ -281,13 +303,18 @@ def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_t
         #context = contexts[i]
         context = tf.placeholder(tf.int32, [batch_size // num_cores, None])
         context_in = randomize(context, hparams, noise)
-        with tf.device(core):
+        with tf.device(core), bfloat16context(hparams):
+          output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
           if hparams.dtype == tf.bfloat16:
-            with tf.contrib.tpu.bfloat16_scope():
-              output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
-            output['logits'] = tf.cast(lm_output['logits'], tf.float32)
-          else:
-            output = model(hparams=hparams, X=context_in, scope=use_scope, *args, **kws)
+            output['logits'] = tf.cast(output['logits'], tf.float32)
+          infer = None
+          if encoder:
+            infer = sample.sample_sequence(
+                hparams=hparams, length=length,
+                start_token=encoder.encoder['<|endoftext|>'],
+                batch_size=batch_size,
+                temperature=temperature, top_k=top_k, top_p=top_p
+            )[:, 1:]
 
         loss_batch = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=context[:, 1:], logits=output['logits'][:, :-1])
@@ -345,31 +372,35 @@ def shard(batch_size, hparams, learning_rate, optimizer='sgd', noise=0.0, only_t
             ada_hparams.optimizer_adafactor_beta1 = 0.0
             ada_hparams.optimizer_adafactor_factored = True
             opt = tensor2tensor.utils.optimize.adafactor(learning_rate=learning_rate, hparams=ada_hparams)
+        elif optimizer == None:
+          pass
         else:
             exit('Bad optimizer:', optimizer)
-        #opt_apply = opt.minimize(loss, var_list=train_vars, global_step=global_step, colocate_gradients_with_ops=colocate_gradients_with_ops)
-        if use_memory_saving_gradients:
-          #opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
-          opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
-        else:
-          opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
-        opt_grads = list(zip(opt_grads, train_vars))
-        opt_apply = opt.apply_gradients(opt_grads, global_step=global_step)
-        fit = tf.tuple([loss], control_inputs=[opt_apply])
         r = Namespace()
         r.scope = use_scope
         r.context = context
         r.context_in = context_in
         r.output = output
-        r.loss_batch = loss_batch
-        r.loss = loss
+        r.infer = infer
+        if optimizer is not None:
+          #opt_apply = opt.minimize(loss, var_list=train_vars, global_step=global_step, colocate_gradients_with_ops=colocate_gradients_with_ops)
+          if use_memory_saving_gradients:
+            #opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
+            opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
+          else:
+            opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops)
+          opt_grads = list(zip(opt_grads, train_vars))
+          opt_apply = opt.apply_gradients(opt_grads, global_step=global_step)
+          fit = tf.tuple([loss], control_inputs=[opt_apply])
+          r.loss_batch = loss_batch
+          r.loss = loss
+          r.opt = opt
+          r.opt_apply = opt_apply
+          r.fit = fit
         r.all_vars = all_vars
         r.train_vars = train_vars
         r.global_vars = global_vars
         r.parameter_count = parameter_count
-        r.opt = opt
-        r.opt_apply = opt_apply
-        r.fit = fit
         results['shards'].append(r)
         #results['present'].append(r['present'])
         #results['logits'].append(r['logits'])

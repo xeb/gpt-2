@@ -15,7 +15,9 @@ import model, sample, encoder
 
 def sample_model(
     model_name='117M',
+    allow_soft_placement=False,
     restore_from=None,
+    fresh_model=False,
     seed=None,
     nsamples=0,
     batch_size=1,
@@ -55,7 +57,9 @@ def sample_model(
     elif length > hparams.n_ctx:
         raise ValueError("Can't get samples longer than window size: %s" % hparams.n_ctx)
 
-    with tflex.Session(graph=tf.Graph()) as sess:
+    config = tf.ConfigProto(allow_soft_placement=allow_soft_placement)
+
+    with tflex.Session(graph=tf.Graph(), config=config) as sess:
         np.random.seed(seed)
         tf.set_random_seed(seed)
 
@@ -65,12 +69,20 @@ def sample_model(
             batch_size=batch_size,
             temperature=temperature, top_k=top_k, top_p=top_p
         )[:, 1:]
+        #output = model.shard(batch_size=batch_size, encoder=enc, hparams=hparams, length=length, temperature=temperature, top_k=top_k, top_p=top_p)
+        #shards = output['shards']
+        #infer = tf.group([x.infer for x in shards])
+        #import pdb
+        #pdb.set_trace()
 
-        saver = tflex.Saver()
-        if restore_from is None:
-          restore_from = os.path.join('models', model_name)
-        ckpt = tflex.latest_checkpoint(restore_from)
-        saver.restore(sess, ckpt)
+        if fresh_model:
+            sess.run(tf.global_variables_initializer())
+        else:
+            saver = tflex.Saver()
+            if restore_from is None:
+              restore_from = os.path.join('models', model_name)
+            ckpt = tflex.latest_checkpoint(restore_from)
+            saver.restore(sess, ckpt)
 
         generated = 0
         while nsamples == 0 or generated < nsamples:
