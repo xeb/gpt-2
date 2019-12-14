@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.training import HParams
+import math
 
 def default_hparams():
     return HParams(
@@ -87,9 +88,11 @@ def attention_mask(nd, ns, *, dtype):
     return tf.cast(m, dtype)
 
 
-def attn(x, scope, n_state, *, past, hparams):
+def attn(x, scope, n_state, *, past, hparams, **kws):
     assert x.shape.ndims == 3  # Should be [batch, sequence, features]
     assert n_state % hparams.n_head == 0
+    #import pdb
+    #pdb.set_trace()
     if past is not None:
         assert past.shape.ndims == 5  # Should be [batch, 2, heads, sequence, features], where 2 is [k, v]
 
@@ -130,7 +133,10 @@ def attn(x, scope, n_state, *, past, hparams):
     dtype = hparams.dtype if hparams else tf.float32
     with tf.variable_scope(scope, dtype=dtype):
         c = conv1d(x, 'c_attn', n_state*3, hparams=hparams)
-        q, k, v = map(split_heads, tf.split(c, 3, axis=2))
+        x = tf.split(c, 3, axis=-1)
+        #import pdb
+        #pdb.set_trace()
+        q, k, v = map(split_heads, x)
         present = tf.stack([k, v], axis=1)
         if past is not None:
             pk, pv = tf.unstack(past, axis=1)
@@ -144,6 +150,210 @@ def attn(x, scope, n_state, *, past, hparams):
         a = dropout(a, hparams.res_dropout)
         return a, present
 
+def _attention_projection_and_transpose(x_flat, batch_size, seq_length, num_attention_heads, size_per_head,
+                                        name, initializer_range=0.02, project=False):
+    """
+    :param x_flat: [batch_size*seq_length, width]
+    :return: A fixed up tensor of size [batch_size, num_attention_heads, seq_length, size_per_head]
+    """
+    #batch_size_seq_length, dim = get_shape_list(x_flat, expected_rank=2)
+    *batch_size_seq_length, dim = shape_list(x_flat)
+    batch_size_seq_length = np.prod(batch_size_seq_length)
+
+    def split_heads(x):
+        # From [batch, sequence, features] to [batch, heads, sequence, features]
+        #import pdb
+        #pdb.set_trace()
+        x = split_states(x, num_attention_heads)
+        return tf.transpose(x, [0, 2, 1, 3])
+
+    # Had to remove this bc of generation script
+    # if (batch_size_seq_length != batch_size * seq_length):
+    #     raise ValueError("passed in a tensor of shape {} when batch_size={} and seq_length={}".format(
+    #         (batch_size_seq_length, dim), batch_size, seq_length
+    #     ))
+
+    if dim != size_per_head * num_attention_heads:
+        raise ValueError("passed in a tensor of shape {} when size_per_head={} and num_attention_heads={}".format(
+            (batch_size_seq_length, dim), size_per_head, num_attention_heads
+        ))
+
+    #projected = tf.layers.dense( #    x_flat,
+    #    num_attention_heads * size_per_head,
+    #    name=name,
+    #    kernel_initializer=create_initializer(initializer_range))
+
+    if project:
+      n_state = num_attention_heads * size_per_head
+      projected = conv1d(x_flat, 'c_attn_'+name, n_state)
+    else:
+      projected = x_flat
+
+    projected = tf.reshape(
+        projected, [batch_size, seq_length, num_attention_heads, size_per_head])
+    #import pdb
+    #pdb.set_trace()
+    output_tensor = tf.transpose(projected, [0, 2, 1, 3])
+    #output_tensor = split_heads(projected)
+    return output_tensor
+
+def mask_attn_weights(w, mask):
+    # w has shape [batch, heads, dst_sequence, src_sequence], where information flows from src to dst.
+    _, _, nd, ns = shape_list(w)
+    #b = attention_mask(nd, ns, dtype=w.dtype)
+    b = mask
+    b = tf.reshape(b, [1, 1, nd, ns])
+    w = w*b - tf.cast(65500 if w.dtype != tf.float32 else 1e10, w.dtype)*(1-b)
+    return w
+
+def attention_layer(x_flat, attention_mask, batch_size, seq_length, size_per_head=512, num_attention_heads=1, *,
+                    cache=None,
+                    initializer_range=0.02, hidden_dropout_prob=0.1,
+                    attention_probs_dropout_prob=0.1, do_cache=False):
+    """
+
+    :param x_flat: Tensor input, should be [batch_size*seq_length, dim]
+    :param attention_mask: Attention mask to use of size [seq_length, seq_length+cached_length]
+    :param size_per_head: dim = size_per_head * num_attention_heads
+    :param num_attention_heads:  dim = size_per_head * num_attention_heads
+    :param cache: Optionally some past (cached) things of size
+                [batch, 2, heads, sequence, features], where 2 is [k, v]
+    :param do_cache: True if we should return cache
+    :return: A new tensor of shape [batch_size, seq_length, dim]
+    as well as a new cache "cached_keys_and_values" that will be of size
+                                   [batch_size, 2, num_attention_heads, seq_length, dim]
+    """
+    #*batch_size_seq_length, dim = get_shape_list(x_flat, expected_rank=2)
+    *batch_size_seq_length, dim = shape_list(x_flat)
+    batch_size_seq_length = np.prod(batch_size_seq_length)
+
+    def merge_heads(x):
+        # Reverse of split_heads
+        x = tf.transpose(x, [0, 2, 1, 3])
+        #import pdb
+        #pdb.set_trace()
+        x = merge_states(x)
+        return x
+
+    # Had to remove this because of generation script
+    # if (batch_size_seq_length != batch_size * seq_length):
+    #     raise ValueError("passed in a tensor of shape {} when batch_size={} and seq_length={}".format(
+    #         (batch_size_seq_length, dim), batch_size, seq_length
+    #     ))
+
+    if dim != size_per_head * num_attention_heads:
+        raise ValueError("passed in a tensor of shape {} when size_per_head={} and num_attention_heads={}".format(
+            (batch_size_seq_length, dim), size_per_head, num_attention_heads
+        ))
+
+    # if do_cache and past is not None:
+    #     Shape will be (batch_size, 2, num_attention_heads, past_seq_length, dim)
+    #     past_shape = get_shape_list(past, 5)
+    #     desired_shape = (batch_size, 2, num_attention_heads, seq_length, dim)
+    #     if tuple(past_shape) != desired_shape:
+    #         raise ValueError(f"The shape of the cache is {past_shape} but we want {desired_shape}")
+
+    #project=True
+    project=False
+
+    if not project:
+      n_state = num_attention_heads * size_per_head * 3
+      x = conv1d(x_flat, 'c_attn', n_state)
+      q_flat, k_flat, v_flat = tf.split(x, 3, axis=-1)
+    else:
+      q_flat, k_flat, v_flat = [x_flat, x_flat, x_flat]
+
+    # [ batch_size, num_attention_heads, seq_length, size_per_head]
+    query = _attention_projection_and_transpose(q_flat, batch_size=batch_size, seq_length=seq_length,
+                                                num_attention_heads=num_attention_heads, size_per_head=size_per_head,
+                                                name='q',
+                                                project=project,
+                                                initializer_range=initializer_range)
+    key = _attention_projection_and_transpose(k_flat, batch_size=batch_size, seq_length=seq_length,
+                                              num_attention_heads=num_attention_heads, size_per_head=size_per_head,
+                                              name='k',
+                                              project=project,
+                                              initializer_range=initializer_range)
+
+    value = _attention_projection_and_transpose(v_flat, batch_size=batch_size, seq_length=seq_length,
+                                                num_attention_heads=num_attention_heads, size_per_head=size_per_head,
+                                                name='v',
+                                                project=project,
+                                                initializer_range=initializer_range)
+
+    # Add to cache
+    cached_keys_and_values = tf.stack([key, value], axis=1) if do_cache else None
+
+    # Things that were relevant from the cache
+    if cache is not None:
+        pk, pv = tf.unstack(cache, axis=1)
+        key = tf.concat([pk, key], axis=-2)
+        value = tf.concat([pv, value], axis=-2)
+
+    # Multiply [batch_size, num_attention_heads, seq_length, size_per_head] with
+    #          [batch_size, num_attention_heads, size_per_head, seq_length+cached_length] ->
+    #          [batch_size, num_attention_heads, seq_length, seq_length+cached_length]
+    attention_scores = tf.matmul(query, key, transpose_b=True)
+    attention_scores = tf.multiply(attention_scores,
+                                   1.0 / math.sqrt(float(size_per_head)))
+    attention_scores = mask_attn_weights(attention_scores, attention_mask)
+
+    #attention_scores = mask_attention_for_ltr(attention_scores, attention_mask)
+    attention_probs = tf.nn.softmax(attention_scores)
+
+    # This is actually dropping out entire tokens to attend to, which might
+    # seem a bit unusual, but is taken from the original Transformer paper.
+    # NOPENOPENOPENOPE
+    # attention_probs = factoreddropout(attention_probs, attention_probs_dropout_prob)
+
+    # Multiply [batch_size, num_attention_heads, seq_length, seq_length+cached_length] with
+    #          [batch_size, num_attention_heads, seq_length+cached_length, size_per_head] ->
+    #          [batch_size, num_attention_heads, seq_length, size_per_head] ->
+    context_layer = tf.matmul(attention_probs, value)
+
+    # `context_layer` = [batch_size, seq_length, num_attention_heads, size_per_head]
+    #context_layer = tf.transpose(context_layer, [0, 2, 1, 3])
+    context_layer = merge_heads(context_layer)
+    #import pdb
+    #pdb.set_trace()
+    #context_layer = tf.reshape(context_layer, [batch_size, seq_length, num_attention_heads * size_per_head])
+    #context_layer = tf.reshape(context_layer, [batch_size*seq_length, num_attention_heads * size_per_head])
+
+    #context_layer_projected = tf.layers.dense(
+    #    context_layer,
+    #    num_attention_heads * size_per_head,
+    #    kernel_initializer=create_initializer(initializer_range),
+    #    name='c_proj'
+    #)
+    n_state = num_attention_heads * size_per_head
+    context_layer_projected = conv1d(context_layer, 'c_proj', n_state)
+    context_layer_projected = dropout(context_layer_projected, hidden_dropout_prob)
+
+    return context_layer_projected, cached_keys_and_values
+
+
+def attn2(hidden_state, scope, nx, past, hparams, mask, batch_size, seq_length):
+    #batch_size, seq_length, hidden_size = shape_list(hidden_state)
+    hidden_size = hparams.n_embd
+    num_attention_heads = hparams.n_head
+    hidden_dropout_prob = hparams.res_dropout
+    attention_probs_dropout_prob = hparams.attn_dropout
+    with tf.variable_scope(scope):
+        # [batch_size * seq_length, hidden_size]
+        attention_output, present = attention_layer(
+            hidden_state,
+            mask,
+            batch_size=batch_size,
+            seq_length=seq_length,
+            size_per_head=hidden_size // num_attention_heads,
+            num_attention_heads=num_attention_heads,
+            #initializer_range=config.initializer_range,
+            hidden_dropout_prob=hidden_dropout_prob,
+            attention_probs_dropout_prob=attention_probs_dropout_prob,
+            #do_cache=do_cache,
+            #cache=layer_cache,
+        )
+    return attention_output, present
 
 def mlp(x, scope, n_state, *, hparams):
     dtype = hparams.dtype if hparams else tf.float32
@@ -160,12 +370,12 @@ def dropout(x, pdrop=0.1, train=True):
         x = tf.nn.dropout(x, rate=pdrop)
     return x
 
-def block(x, scope, *, past, hparams):
+def block(x, scope, *, past, hparams, attn, **attn_kws):
     dtype = hparams.dtype if hparams else tf.float32
     with tf.variable_scope(scope, dtype=dtype):
         nx = x.shape[-1].value
         ln_1 = norm(x, 'ln_1', hparams=hparams)
-        a, present = attn(ln_1, 'attn', nx, past=past, hparams=hparams)
+        a, present = attn(ln_1, 'attn', nx, past=past, hparams=hparams, **attn_kws)
         x = x + a
         ln_2 = norm(x, 'ln_2', hparams=hparams)
         m = mlp(ln_2, 'mlp', nx*4, hparams=hparams)
@@ -189,6 +399,27 @@ def positions_for(embedding_table, input_ids, past_length):
 def gather_for(full_position_embeddings, input_ids):
     #return tf.gather(full_position_embeddings, input_ids) #h = tf.gather(wte, X)
     return tf.nn.embedding_lookup(full_position_embeddings, input_ids)
+
+def embed(input_ids,
+          vocab_size,
+          embedding_size,
+          max_position_embeddings,
+          position_offset,
+          initializer_range_wpe=0.01,
+          initializer_range_wte=0.02,
+          ):
+    wpe = get_variable('wpe') or tf.get_variable('wpe',
+        shape=[max_position_embeddings, embedding_size], #[hparams.n_ctx, hparams.n_embd],
+        initializer=tf.random_normal_initializer(stddev=initializer_range_wpe))
+
+    wte = get_variable('wte') or tf.get_variable('wte',
+        shape=[vocab_size, embedding_size], #[hparams.n_vocab, hparams.n_embd],
+        initializer=tf.random_normal_initializer(stddev=initializer_range_wte))
+
+    #past_length = 0 if past is None else tf.shape(past)[-2]
+    h = gather_for(wte, input_ids)
+    h = h + positions_for(wpe, input_ids, position_offset)
+    return wpe, wte, h
 
 def create_initializer(initializer_range=0.02):
     """Creates a `truncated_normal_initializer` with the given range."""
@@ -268,29 +499,6 @@ def embed2(input_ids,
     #return layer_norm(embedded_input, name='ln_f'), embedding_table
     return full_position_embeddings, embedding_table, embedded_input
 
-
-def embed(input_ids,
-          vocab_size,
-          embedding_size,
-          max_position_embeddings,
-          position_offset,
-          initializer_range_wpe=0.01,
-          initializer_range_wte=0.02,
-          ):
-    wpe = get_variable('wpe') or tf.get_variable('wpe',
-        shape=[max_position_embeddings, embedding_size], #[hparams.n_ctx, hparams.n_embd],
-        initializer=tf.random_normal_initializer(stddev=initializer_range_wpe))
-
-    wte = get_variable('wte') or tf.get_variable('wte',
-        shape=[vocab_size, embedding_size], #[hparams.n_vocab, hparams.n_embd],
-        initializer=tf.random_normal_initializer(stddev=initializer_range_wte))
-
-    #past_length = 0 if past is None else tf.shape(past)[-2]
-    h = gather_for(wte, input_ids)
-    h = h + positions_for(wpe, input_ids, position_offset)
-    return wpe, wte, h
-
-
 def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
     dtype = hparams.dtype if hparams else tf.float32
     with tf.variable_scope(scope, reuse=reuse, dtype=dtype):
@@ -303,7 +511,7 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
         #    max_position_embeddings=hparams.n_ctx,
         #    vocab_size=hparams.n_vocab,
         #    embedding_size=hparams.n_embd)
-        wpe, wte, h = embed(
+        wpe, wte, h = embed2(
             input_ids=X,
             position_offset=past_length,
             max_position_embeddings=hparams.n_ctx,
@@ -328,9 +536,18 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
         ## the GPU/CPU but may not be free on the TPU, so we want to minimize them to
         ## help the optimizer.
         #batch_size, seq_length, hidden_size = shape_list(h)
+        import pdb
+        pdb.set_trace()
+        batch_size, seq_length, hidden_size = shape_list(h)
         #h = tf.reshape(h, [batch_size * seq_length, hidden_size])
+
+        #mask = get_attention_mask(self.seq_length, self.seq_length + self.cache_length, dtype=embeddings.dtype)
+        mask = get_attention_mask(sequence, sequence,# + self.cache_length,
+            dtype=hparams.dtype)
+
         for layer, past in enumerate(pasts):
-            h, present = block(h, 'h%d' % layer, past=past, hparams=hparams)
+            h, present = block(h, 'h%d' % layer, past=past, hparams=hparams, attn=attn,
+                mask=mask, batch_size=batch_size, seq_length=seq_length)
             if layer == 10:
                 tf.add_to_collection('checkpoints', h)
             presents.append(present)
