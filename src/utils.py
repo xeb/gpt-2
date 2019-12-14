@@ -115,11 +115,11 @@ def gelu(input_tensor):
 
 def layer_norm(input_tensor, name=None, epsilon=1e-5):
     """Run layer normalization on the last dimension of the tensor."""
-    name2use = ('LayerNorm_%s' % name) if name is not None else name
-    with tf.variable_scope(name2use, default_name='LayerNorm'):
+    name2use = ('%s' % name) if name is not None else name
+    with tf.variable_scope(name2use, default_name='ln'):
         dim = input_tensor.shape[-1].value
-        gamma = tf.get_variable('gamma', [dim], initializer=tf.constant_initializer(1))
-        beta = tf.get_variable('beta', [dim], initializer=tf.constant_initializer(0))
+        gamma = tf.get_variable('g', [dim], initializer=tf.constant_initializer(1))
+        beta = tf.get_variable('b', [dim], initializer=tf.constant_initializer(0))
         mean = tf.reduce_mean(input_tensor, axis=-1, keepdims=True)
         std = tf.reduce_mean(tf.square(input_tensor - mean), axis=-1, keepdims=True)
         input_tensor = (input_tensor - mean) * tf.rsqrt(std + epsilon)

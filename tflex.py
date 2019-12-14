@@ -40,7 +40,7 @@ class Session(tf.Session):
       sess.run(tpu.initialize_system())
     return sess
 
-def split_by_params(vs, n=200e6, f=None):
+def split_by_params(vs, n=2e6, f=None):
   if f is None:
     f = lambda x: np.prod(x.shape.as_list())
   i = 0
@@ -67,10 +67,29 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
       return ckpt.split('.data-00000-of-00001')[0]
   return ckpt
 
+reshapes = []
+
+def reshape_1(variable, value):
+  #import pdb
+  #pdb.set_trace()
+  shape = variable.shape.as_list()
+  if len(shape) == 2 and len(value.shape) == 3 and value.shape[0] == 1:
+    return variable, np.squeeze(value, axis=0)
+  return variable, value
+
+reshapes.append(reshape_1)
+
 def truncate_value(variable, value, reshape=True):
+  shape = variable.shape.as_list()
+  for f in reshapes:
+    variable, value = f(variable, value)
   if not reshape:
     return value
-  shape = variable.shape.as_list()
+  if variable.name in reshapes:
+    shape2 = reshapes[variable.name]
+    value = np.array(value)
+    value = value.reshape(shape2)
+    return value
   params = np.prod(shape)
   params2 = np.prod(value.shape)
   if params == params2:

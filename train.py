@@ -13,8 +13,11 @@ import time
 import tqdm
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.ops import gradients
+from tensorflow.core.protobuf import config_pb2
 
-import model, sample, encoder
+import model, encoder
+import sample_sequence as sample
 from load_dataset import load_dataset, Sampler, TextSampler
 from accumulate import AccumulatingOptimizer
 import memory_saving_gradients
@@ -107,7 +110,11 @@ parser.add_argument('--debug_print_all_vars', default=False, action='store_true'
 parser.add_argument('--debug_print_trainable_vars', default=False, action='store_true', help="Print trainable variables after running one training step")
 
 parser.add_argument('--allow_growth', default=False, action='store_true', help="Set config.gpu_options.allow_growth = True")
+parser.add_argument('--allow_soft_placement', default=False, action='store_true', help="Set config.allow_soft_placement = True")
 parser.add_argument('--disable_layout_optimizer', default=False, action='store_true', help="Set config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF")
+parser.add_argument('--colocate_gradients', default=False, action='store_true')
+parser.add_argument('--no-report_tensor_allocations_upon_oom', default=True, action='store_false')
+parser.add_argument('--device', type=int, default=-1)
 
 parser.add_argument('--debug_before_training', default=False, action='store_true', help="Drop into debugger before starting the training loop")
 
@@ -145,7 +152,13 @@ def randomize(context, hparams, p):
     else:
         return context
 
-from grover import grover_builder, model_fn_builder, GroverConfig
+from contextlib import contextmanager
+
+@contextmanager
+def nullcontext(enter_result=None):
+    yield enter_result
+
+from grover import grover_builder, model_fn_builder, GroverConfig, GroverModel
 from sample.encoder import article_iterator, get_encoder
 
 def main():
@@ -210,10 +223,17 @@ def main():
     config = tf.ConfigProto()
     if args.allow_growth:
         config.gpu_options.allow_growth = True
+    if args.allow_soft_placement:
+        config.allow_soft_placement = True
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
-    with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
-        with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
+    options = config_pb2.RunOptions(report_tensor_allocations_upon_oom=(not args.no_report_tensor_allocations_upon_oom))
+    sess = tflex.Session(config=config, init_tpu=args.init_tpu)
+    with sess.as_default():
+        devices = sess.list_devices()
+        device = None if args.device < 0 else devices[args.device].name
+        #with tf.device(device):
+        with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE), tf.device(device):
             global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
             current_step = args.learning_rate_initial_step
             global_step.load(current_step, session=sess)
@@ -223,41 +243,74 @@ def main():
             else:
                 lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
                 lr.load(args.learning_rate, session=sess)
-        context = tf.placeholder(tf.int32, [args.batch_size, None])
-        context_in = randomize(context, hparams, args.noise)
-        if args.grover:
-          grover_fn = grover_builder(news_config,
-                                      #init_checkpoint=FLAGS.init_checkpoint,
-                                      #learning_rate=FLAGS.learning_rate,
-                                      #num_train_steps=FLAGS.num_train_steps,
-                                      #num_warmup_steps=FLAGS.num_warmup_steps,
-                                      #use_tpu=FLAGS.use_tpu,
-                                      init_checkpoint=None,
-                                      learning_rate=lr,
-                                      num_train_steps=args.learning_rate_period,
-                                      num_warmup_steps=args.learning_rate_warmup,
-                                      use_tpu=False,
-                                      global_step=global_step
-                                      )
-          features = {
-              'input_ids': context
-          }
-          output = grover_fn(features, None, mode=tf.estimator.ModeKeys.TRAIN, params={'model_dir': os.path.join('models', args.model_name)})
-          metrics = output['metrics']
-          loss = output['loss']
-          #lr = metrics['learning_rate']
-        else:
-          output = model.model(hparams=hparams, X=context_in)
-          loss = tf.reduce_mean(
-              tf.nn.sparse_softmax_cross_entropy_with_logits(
-                  labels=context[:, 1:], logits=output['logits'][:, :-1]))
+        with tf.device(device):
+          context_set = tf.placeholder(tf.int32, [args.batch_size, None])
+          context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], name="context", dtype=tf.int32), dtype=tf.int32, shape=[args.batch_size, args.sample_ctx], trainable=False)
+          context_in = randomize(context, hparams, args.noise)
+          feed_op = tf.assign(context, context_set)
+
+        def feed(context, tokens, session=None):
+          if session is None:
+            session = tf.get_default_session()
+          if len(tokens) != args.batch_size:
+            print('Tried to feed invalid batch size!')
+            return {}
+          for batch in tokens:
+            if len(batch) != args.sample_ctx:
+              print('Tried to feed invalid number of tokens!')
+              return {}
+          with tf.device(device):
+            session.run(feed_op, feed_dict={context_set: tokens}, options=options)
+          return {}
+        with tf.contrib.tpu.bfloat16_scope() if hparams.dtype == tf.bfloat16 else nullcontext(), tf.device(device):
+          if args.grover:
+            grover_mdl = GroverModel(
+                config=news_config,
+                is_training=True,
+                input_ids=context,
+                #pad_token_id=config.pad_token_id,
+                #chop_off_last_token=True,
+                chop_off_last_token=False,
+            )
+            loss = grover_mdl.lm_loss()
+          elif args.grover:
+            grover_fn = grover_builder(news_config,
+                                        #init_checkpoint=FLAGS.init_checkpoint,
+                                        #learning_rate=FLAGS.learning_rate,
+                                        #num_train_steps=FLAGS.num_train_steps,
+                                        #num_warmup_steps=FLAGS.num_warmup_steps,
+                                        #use_tpu=FLAGS.use_tpu,
+                                        init_checkpoint=None,
+                                        learning_rate=lr,
+                                        num_train_steps=args.learning_rate_period,
+                                        num_warmup_steps=args.learning_rate_warmup,
+                                        use_tpu=False,
+                                        global_step=global_step
+                                        )
+            features = {
+                'input_ids': context
+            }
+            output = grover_fn(features, None, mode=tf.estimator.ModeKeys.TRAIN, params={'model_dir': os.path.join('models', args.model_name)})
+            metrics = output['metrics']
+            loss = output['loss']
+            #lr = metrics['learning_rate']
+          else:
+            output = model.model(hparams=hparams, X=context_in)
+            loss = tf.reduce_mean(
+                tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=context[:, 1:], logits=output['logits'][:, :-1]))
+            if hparams.dtype == tf.bfloat16:
+              loss = tf.cast(loss, tf.float32)
 
         if args.val_every > 0 and not args.grover: # todo: grover
+          with tf.contrib.tpu.bfloat16_scope() if hparams.dtype == tf.bfloat16 else nullcontext():
             val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
             val_output = model.model(hparams=hparams, X=val_context)
             val_loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
+            if hparams.dtype == tf.bfloat16:
+              val_loss = tf.cast(val_loss, tf.float32)
             val_loss_summary = tf.summary.scalar('val_loss', val_loss)
 
 
@@ -272,7 +325,7 @@ def main():
               top_p=args.top_p,
               epsilon=epsilon)
 
-        if args.grover:
+        if args.grover and False:
           all_vars = output['vars']
           train_vars = all_vars
         else:
@@ -308,54 +361,57 @@ def main():
           print("Setting learn rate to %0.8f" % rate)
           args.learning_rate = rate
 
-        if args.grover:
-            opt = output['optimizer']
-        elif args.optimizer == 'adam':
-            opt = tf.train.AdamOptimizer(learning_rate=lr)
-        elif args.optimizer == 'sgd':
-            opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
-        elif args.optimizer == 'ada':
-            import tensor2tensor.utils.optimize
-            from tensor2tensor.utils import hparam
-            import tensor2tensor.models.research
-            from tensor2tensor.utils import registry
-            ada_hparams = registry.hparams('afx_mimic_adam')
-            ada_hparams.optimizer_adafactor_beta1 = 0.0
-            ada_hparams.optimizer_adafactor_factored = True
-            opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
-        else:
-            exit('Bad optimizer:', args.optimizer)
-        
-        #if tpu_addr:
-        #    # https://pulsejet.github.io/blog/posts/tpu-without-estimator/
-        #    from tensorflow.contrib.tpu.python.tpu import tpu_function
-        #    tpu_function.get_tpu_context().set_number_of_shards(8)
-        #    opt = tf.contrib.tpu.CrossShardOptimizer(opt)
+        with tf.contrib.tpu.bfloat16_scope() if hparams.dtype == tf.bfloat16 else nullcontext(), tf.device(device):
+          if args.grover and False:
+              opt = output['optimizer']
+          elif args.optimizer == 'adam':
+              opt = tf.train.AdamOptimizer(learning_rate=lr)
+          elif args.optimizer == 'sgd':
+              opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
+          elif args.optimizer == 'ada':
+              import tensor2tensor.utils.optimize
+              from tensor2tensor.utils import hparam
+              import tensor2tensor.models.research
+              from tensor2tensor.utils import registry
+              ada_hparams = registry.hparams('afx_mimic_adam')
+              ada_hparams.optimizer_adafactor_beta1 = 0.0
+              ada_hparams.optimizer_adafactor_factored = True
+              opt = tensor2tensor.utils.optimize.adafactor(learning_rate=lr, hparams=ada_hparams)
+          else:
+              exit('Bad optimizer:', args.optimizer)
+          
+          #if tpu_addr:
+          #    # https://pulsejet.github.io/blog/posts/tpu-without-estimator/
+          #    from tensorflow.contrib.tpu.python.tpu import tpu_function
+          #    tpu_function.get_tpu_context().set_number_of_shards(8)
+          #    opt = tf.contrib.tpu.CrossShardOptimizer(opt)
 
-        if args.grover:
-            opt_compute = output['grads']
-            opt_grads = list(zip(opt_compute, train_vars))
-            #opt_compute = output['grads']
-            opt_apply = output['train_op']
-            summary_loss = tf.summary.scalar('loss', loss)
-        elif args.accumulate_gradients > 1:
-            if args.memory_saving_gradients:
-                exit("Memory saving gradients are not implemented for gradient accumulation yet.")
-            opt = AccumulatingOptimizer(
-                opt=opt,
-                var_list=train_vars)
-            opt_reset = opt.reset()
-            opt_compute = opt.compute_gradients(loss)
-            opt_apply = opt.apply_gradients()
-            summary_loss = tf.summary.scalar('loss', opt_apply)
-        else:
-            if args.memory_saving_gradients:
-                opt_grads = memory_saving_gradients.gradients(loss, train_vars)
-            else:
-                opt_grads = tf.gradients(loss, train_vars)
-            opt_grads = list(zip(opt_grads, train_vars))
-            opt_apply = opt.apply_gradients(opt_grads)
-            summary_loss = tf.summary.scalar('loss', loss)
+          if args.grover and False:
+              opt_compute = output['grads']
+              opt_grads = list(zip(opt_compute, train_vars))
+              #opt_compute = output['grads']
+              opt_apply = output['train_op']
+              summary_loss = tf.summary.scalar('loss', loss)
+          elif args.accumulate_gradients > 1:
+              if args.memory_saving_gradients:
+                  exit("Memory saving gradients are not implemented for gradient accumulation yet.")
+              opt = AccumulatingOptimizer(
+                  opt=opt,
+                  var_list=train_vars)
+              opt_reset = opt.reset()
+              opt_compute = opt.compute_gradients(loss)
+              opt_apply = opt.apply_gradients()
+              summary_loss = tf.summary.scalar('loss', opt_apply)
+          else:
+              with tf.device(device):
+                if args.memory_saving_gradients:
+                    opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients, gate_gradients=tf.train.Optimizer.GATE_NONE)
+                else:
+                    opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients, gate_gradients=tf.train.Optimizer.GATE_NONE)
+              opt_grads = list(zip(opt_grads, train_vars))
+              with tf.device(device):
+                opt_apply = opt.apply_gradients(opt_grads)
+              summary_loss = tf.summary.scalar('loss', loss)
 
         summary_lr = tf.summary.scalar('learning_rate', lr)
         summaries = tf.summary.merge([summary_lr, summary_loss])
@@ -371,7 +427,8 @@ def main():
             max_to_keep=args.max_to_keep,
             keep_checkpoint_every_n_hours=2,
             reshape=args.truncate_weights)
-        sess.run(tf.global_variables_initializer())
+        with tf.device(device):
+          sess.run(tf.global_variables_initializer(), options=options)
 
         if args.restore_from == 'latest':
             ckpt = tflex.latest_checkpoint(
@@ -388,6 +445,7 @@ def main():
         print('Loading snapshot %s...' % ckpt)
         t0 = time.time()
         if not args.fresh_model:
+          with tf.device(device):
             saver.restore(sess, ckpt)
         t1 = time.time()
         print('Loaded in %f seconds' % (t1 - t0))
@@ -401,8 +459,12 @@ def main():
                 self.iter = article_iterator(encoder, dataset, final_desired_size=hparams.n_ctx+1)
                 self.epoch = 0
                 self.tokens = []
-
               def sample(self, count):
+                tokens = self.sample_1(count)
+                while len(tokens) != count:
+                  tokens = self.sample_1(count)
+                return tokens
+              def sample_1(self, count):
                 if '.tfrecord' in self.dataset:
                   article = next(self.iter)
                   if not article:
@@ -411,7 +473,8 @@ def main():
                     article = next(self.iter)
                   import pdb
                   pdb.set_trace()
-                  result = article['input_ids'][-1][0:count]
+                  #result = article['input_ids'][-1][0:count]
+                  result = article['input_ids']
                   return result
                 else:
                   if count > len(self.tokens):
@@ -479,9 +542,7 @@ def main():
             all_text = []
             index = 0
             while index < args.sample_num:
-                out = sess.run(
-                    tf_sample,
-                    feed_dict={context: args.batch_size * [context_tokens]})
+                out = sess.run(tf_sample, feed_dict=feed(context, args.batch_size * [context_tokens], session=sess), options=options)
                 for i in range(min(args.sample_num - index, args.batch_size)):
                     text = enc.decode(out[i])
                     text = '======== SAMPLE {} ========\n{}\n'.format(
@@ -504,9 +565,9 @@ def main():
             print('Calculating validation loss...')
             losses = []
             for batch in tqdm.tqdm(val_batches):
-                losses.append(sess.run(val_loss, feed_dict={val_context: batch}))
+                losses.append(sess.run(val_loss, feed_dict=feed(val_context, batch, session=sess), options=options))
             v_val_loss = np.mean(losses)
-            v_summary = sess.run(val_loss_summary, feed_dict={val_loss: v_val_loss})
+            v_summary = sess.run(val_loss_summary, feed_dict={val_loss: v_val_loss}, options=options)
             summary_log.add_summary(v_summary, counter)
             summary_log.flush()
             print(
@@ -565,24 +626,50 @@ def main():
 
                 v_rate = update_lr()
 
+                if args.debug_print_all_vars:
+                    print('all variables:')
+                    print('name/shape/parameter_count')
+                    param_count = 0
+                    for x in tf.all_variables():
+                        shape = x.shape.as_list()
+                        count = np.prod(shape)
+                        print(x.name, shape, count)
+                        param_count += count
+                    print('Total parameters:', param_count)
+                    args.debug_print_all_vars = False
+
+                if args.debug_print_trainable_vars:
+                    print('trainable variables:')
+                    print('name/shape/parameter_count')
+                    param_count = 0
+                    for x in tf.trainable_variables():
+                        shape = x.shape.as_list()
+                        count = np.prod(shape)
+                        print(x.name, shape, count)
+                        param_count += count
+                    print('Total parameters:', param_count)
+                    args.debug_print_trainable_vars = False
+
                 if args.accumulate_gradients > 1:
                     #say('Running opt_reset...')
-                    sess.run(opt_reset)
+                    sess.run(opt_reset, options=options)
                     for _ in range(args.accumulate_gradients):
                         batch = sample_batch()
                         say('Running opt_compute...')
-                        sess.run(opt_compute, feed_dict={context: batch})
+                        sess.run(opt_compute, feed_dict=feed(context, batch, session=sess), options=options)
                     say('Running opt_apply...')
-                    (v_loss, v_summary) = sess.run((opt_apply, summaries))
+                    (v_loss, v_summary) = sess.run((opt_apply, summaries), options=options)
                 else:
+                  with tf.device(device):
                     batch = sample_batch()
                     say('Running opt_apply...')
                     (_, v_loss, v_summary) = sess.run(
                         (opt_apply, loss, summaries),
-                        feed_dict={context: batch})
+                        feed_dict=feed(context, batch, session=sess), options=options)
 
-                if args.float16:
-                    v_loss = tf.to_float(v_loss).eval()
+                with tf.device(device):
+                  if args.float16:
+                      v_loss = tf.to_float(v_loss).eval()
 
                 summary_log.add_summary(v_summary, counter)
                 summary_log.flush()
@@ -631,29 +718,6 @@ def main():
                   break
 
                 prev_time = now
-                if args.debug_print_all_vars:
-                    print('all variables:')
-                    print('name/shape/parameter_count')
-                    param_count = 0
-                    for x in tf.all_variables():
-                        shape = x.shape.as_list()
-                        count = np.prod(shape)
-                        print(x.name, shape, count)
-                        param_count += count
-                    print('Total parameters:', param_count)
-                    args.debug_print_all_vars = False
-
-                if args.debug_print_trainable_vars:
-                    print('trainable variables:')
-                    print('name/shape/parameter_count')
-                    param_count = 0
-                    for x in tf.trainable_variables():
-                        shape = x.shape.as_list()
-                        count = np.prod(shape)
-                        print(x.name, shape, count)
-                        param_count += count
-                    print('Total parameters:', param_count)
-                    args.debug_print_trainable_vars = False
             except KeyboardInterrupt:
                 print('interrupted')
                 if args.save_on_ctrlc:

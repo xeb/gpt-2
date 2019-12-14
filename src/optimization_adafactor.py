@@ -15,9 +15,9 @@
 import re
 import tensorflow as tf
 from utils import get_shape_list
+from tensorflow.python.ops import gradients
 
-
-def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu, var_list=None, global_step=None):
+def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu, var_list=None, global_step=None, colocate_gradients=False):
     """Creates an optimizer training op."""
     if global_step is None:
       global_step = tf.train.get_or_create_global_step()
@@ -66,7 +66,7 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu, 
         optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
     tvars = var_list if var_list is not None else tf.trainable_variables()
-    grads = tf.gradients(loss, tvars)
+    grads = gradients.gradients(loss, tvars, colocate_gradients_with_ops=colocate_gradients)
 
     # You could do this, but instead we don't because a) it's slow and b) we already did the 'update clipping'
     # (grads, _) = tf.clip_by_global_norm(grads, clip_norm=1.0)
