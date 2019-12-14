@@ -11,7 +11,8 @@ import numpy as np
 import tensorflow as tf
 import tflex
 
-import model, sample, encoder
+import model, encoder
+import sample_sequence as sample
 
 def sample_model(
     model_name='117M',
