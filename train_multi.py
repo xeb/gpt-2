@@ -819,8 +819,7 @@ def main():
         hparams.dtype = tf.float16
         epsilon = -65500
     elif args.dtype == 'bfloat16':
-        hparams.dtype = tf.bfloat16
-        epsilon = -65500
+        pass
     else:
         print('Unknown dtype', args.dtype)
     if args.float16:
