@@ -452,7 +452,7 @@ def trainer_fit(self):
   self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
                    self.avg_perp[1] * 0.99 + 1.0]
   now = time.time()
-  print('{stamp} {target:16s}::{core} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.8f} step={step}'
+  print('{stamp} {target:16s}::{core} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.12f} step={step}'
       .format(
           stamp=timestamp(),
           core=self.core,
