@@ -238,8 +238,6 @@ class TrainGPT2(threading.Thread):
       print('Initializing TPU...', self.target)
       session.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=tflex.tpu_init_timeout))
 
-    #cores = session.list_devices()[2:]
-    #core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
     device = None
     if args.device >= 0:
       device = tflex.get_core(args.device, session=session) # not quite right; punt for now.
