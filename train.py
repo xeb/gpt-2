@@ -213,17 +213,12 @@ def main():
             tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=context[:, 1:], logits=output['logits'][:, :-1]))
 
-        if hparams.dtype == tf.bfloat16:
-            loss = tf.cast(loss, tf.float32)
-
         if args.val_every > 0:
             val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
             val_output = model.model(hparams=hparams, X=val_context)
             val_loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
-            if hparams.dtype == tf.bfloat16:
-                val_loss = tf.cast(val_loss, tf.float32)
             val_loss_summary = tf.summary.scalar('val_loss', val_loss)
 
 
