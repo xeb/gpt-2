@@ -716,6 +716,10 @@ def update_trainers(trainers, i, sync_all=False, timeout=30):
         try:
           lock.acquire()
           for variable, value in zip(variables, values):
+            if np.isnan(value).any():
+              continue
+            if np.isinf(value).any():
+              continue
             if variable.name in accum:
               accum[variable.name] = accum[variable.name] + value
             else:
