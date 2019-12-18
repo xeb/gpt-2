@@ -200,7 +200,7 @@ def get_core(i, session=None):
     session = tf.get_default_session()
   if tflex._cores is None:
     tflex._cores = session.list_devices()[2:]
-  n = len(_cores)
+  n = len(tflex._cores)
   if n <= 0:
     return None
   result = tflex._cores[i % n].name
