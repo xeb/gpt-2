@@ -214,6 +214,10 @@ tflex.get_core = get_core
 class TrainGPT2(object):
   def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=tflex.session_timeout_in_ms, session=None, counter=None):
     super(TrainGPT2, self).__init__()
+    core = args.device
+    if '::' in target:
+      target, core = target.split('::')
+      core = int(core)
     self.fresh = True
     self.dead = False
     self.args = args
@@ -240,8 +244,8 @@ class TrainGPT2(object):
       session.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=tflex.tpu_init_timeout))
 
     device = None
-    if args.device >= 0:
-      device = tflex.get_core(args.device, session=session) # not quite right; punt for now.
+    if core >= 0:
+      device = tflex.get_core(core, session=session) # not quite right; punt for now.
     self.device = device
     with tf.device(device), tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
       #context = tf.placeholder(tf.int32, [args.batch_size, None])
