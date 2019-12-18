@@ -497,6 +497,7 @@ def main():
                     sess.run(opt_reset)
                     for _ in range(args.accumulate_gradients):
                         batch = sample_batch()
+                        print(repr(enc.decode(batch[0]))[0:150] + '...')
                         say('Running opt_compute...')
                         context.load(batch, session=sess)
                         sess.run(opt_compute)
@@ -505,6 +506,7 @@ def main():
                 else:
                     say('Generating batch...')
                     batch = sample_batch()
+                    print(repr(enc.decode(batch[0]))[0:150] + '...')
                     say('Loading context...')
                     context.load(batch, session=sess)
                     say('Running opt_apply...')
