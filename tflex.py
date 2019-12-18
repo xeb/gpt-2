@@ -14,6 +14,11 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib.cluster_resolver import TPUClusterResolver
 from tensorflow.python.framework import dtypes
 
+class Namespace(object):
+  pass
+
+state = Namespace()
+
 def get_tpu_addr(tpu_name=None):
     # Get the TPU's location
     if tpu_name is not None:
@@ -165,12 +170,26 @@ def maketree(path):
     except:
         pass
 
-def cast_variables(variables):
+state.cache_ops = {}
+
+def cast_variables(variables, graph=None, cache_ops=None):
+  if graph is None:
+    graph = tf.get_default_graph()
+  if cache_ops is None:
+    cache_ops = state.cache_ops
+  if graph not in cache_ops:
+    cache_ops[graph] = {}
+  cache = cache_ops[graph]
   for variable in variables:
+    if variable in cache:
+      yield cache[variable]
+      continue
     if variable.dtype == dtypes.bfloat16_ref or variable.dtype == tf.bfloat16:
-      yield tf.cast(variable, tf.float32)
+      op = tf.cast(variable, tf.float32)
     else:
-      yield variable
+      op = variable
+    cache[variable] = op
+    yield op
 
 def save_variables(ckpt, session=None, var_list=None):
     session = session or tf.get_default_session()
