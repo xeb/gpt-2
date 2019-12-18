@@ -292,7 +292,10 @@ class TrainGPT2(threading.Thread):
       parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
       print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
 
-      opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients)
+      if args.memory_saving_gradients:
+        opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients)
+      else:
+        opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_device=args.colocate_gradients)
       opt_grads = list(zip(opt_grads, train_vars))
       opt_apply = opt.apply_gradients(opt_grads)
       summary_loss = tf.summary.scalar('loss', loss)
