@@ -478,6 +478,9 @@ def main():
             import pdb
             pdb.set_trace()
 
+        if args.accumulate_gradients <= 1:
+            opt_train = tf.tuple([loss, summaries], control_inputs=[opt_apply])
+
         last_saved_time = elapsed()
         while True:
             try:
@@ -510,10 +513,7 @@ def main():
                     say('Loading context...')
                     context.load(batch, session=sess)
                     say('Running opt_apply...')
-                    (_, v_loss, v_summary) = sess.run((opt_apply, loss, summaries))
-
-                if args.float16:
-                    v_loss = tf.to_float(v_loss).eval()
+                    (v_loss, v_summary) = sess.run(opt_train)
 
                 summary_log.add_summary(v_summary, counter)
                 summary_log.flush()
