@@ -118,7 +118,7 @@ def grab_values(variables, reader, reshape=False):
 def assign_values(variables, values, session=None, timeout_in_ms=30000):
   session = session or tf.get_default_session()
   ops = [x.initializer for x in variables]
-  vals = dict([(x.initializer.inputs[1], value) for x, value in zip(variables, values)])
+  vals = dict([(x.initializer.inputs[1], value) for x, value in zip(variables, values)]) # TODO: bfloat16 support
   #for x, (k, v) in zip(variables, vals.items()):
   #  print(x.name, x.shape.as_list(), k, v.shape)
   options = None
