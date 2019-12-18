@@ -133,6 +133,7 @@ parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for
 parser.add_argument('--save_graph', default=False, action='store_true', help="Save TensorFlow graph to summary log (to see ops in tensorboard)")
 
 parser.add_argument('--device', type=int, default=-1, help='device to use.')
+parser.add_argument('--no-averaging', default=False, action='store_true')
 
 PST = pytz.timezone('US/Pacific')
 
@@ -210,7 +211,7 @@ def get_core(i, session=None):
 
 tflex.get_core = get_core
 
-class TrainGPT2(threading.Thread):
+class TrainGPT2(object):
   def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=tflex.session_timeout_in_ms, session=None, counter=None):
     super(TrainGPT2, self).__init__()
     self.fresh = True
@@ -340,109 +341,146 @@ class TrainGPT2(threading.Thread):
       self.avg_perp = [0.0, 0.0]
     self.start_time = time.time()
     self.prev_time = self.start_time
+    self.thread = threading.Thread(target=tflex.trainer_toplevel, args=(self,))
     
-  def aborted(self):
-    try:
-      self.sess.list_devices()
-      return False
-    except InvalidArgumentError:
-      return True
-    except AbortedError:
-      return True
-    except DeadlineExceededError:
-      return True
+  #def aborted(self):
+  #  try:
+  #    self.sess.list_devices()
+  #    return False
+  #  except InvalidArgumentError:
+  #    return True
+  #  except AbortedError:
+  #    return True
+  #  except DeadlineExceededError:
+  #    return True
 
   def sample_batch(self):
-    args = self.args
-    return [self.sampler.sample(args.sample_ctx) for _ in range(args.batch_size)]
+    return tflex.trainer_sample_batch(self)
   
   def elapsed(self):
-    return time.time() - self.start_time
+    return tflex.trainer_elapsed(self)
 
   def say(self, msg):
-    print('{stamp} {target:16s} [{counter} | {time:2.4f}] {msg}'.format(stamp=timestamp(), target=self.target[-16:], counter=self.counter, time=self.elapsed(), msg=msg))
+    return tflex.trainer_say(self, msg)
 
   def update_lr(self, step=None, rate=None):
-    global_step = self.global_step
-    args = self.args
-    lr = self.lr
-    wd = self.wd
-    sess = self.sess
-    weight_decay = args.weight_decay
-    if not args.learning_rate_cos:
-      if step is None:
-        step = eval_lightweight(global_step, session=sess)
-      if rate is None:
-        rate = args.learning_rate
-      if callable(rate):
-        rate = rate(step)
-      load_lightweight(lr, rate, session=sess)
-    load_lightweight(wd, weight_decay, session=sess)
-    v_rate = eval_lightweight(lr, session=sess)
-    v_weight_decay = eval_lightweight(wd, session=sess)
-    return v_rate, v_weight_decay
-  
-  def run(self):
-    while not self.stopped:
-      while self.paused:
-        time.sleep(0.1)
-      self.fit()
-      time.sleep(0.1)
+    return tflex.trainer_update_lr(self, step=step, rate=rate)
 
   def ensure(self):
-    if self.init is not None:
-      args = self.args
-      self.say('Initializing...')
-      self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=tflex.initialize_timeout))
-      if not args.fresh_model:
-        tflex.load_trainer(self)
-      self.say('Initialized.')
-      self.init = None
+    return tflex.trainer_ensure(self)
 
   def fit(self):
-    self.ensure()
-    load_lightweight(self.global_step, self.counter, session=self.sess)
-    v_rate, v_weight_decay = self.update_lr()
-    self.say('Generating batch...')
-    batch = self.sample_batch()
-    print(repr(self.enc.decode(batch[0]))[0:150] + '...')
-    self.say('Loading context...')
-    load_lightweight(self.context, batch, session=self.sess, timeout_in_ms=tflex.context_load_timeout)
-    self.say('Running opt_apply...')
-    (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
-    self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
-                     self.avg_loss[1] * 0.99 + 1.0]
-    v_perp = math.exp(v_loss)
-    self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
-                     self.avg_perp[1] * 0.99 + 1.0]
-    now = time.time()
-    print('{stamp} {target:16s} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.8f} step={step}'
-        .format(
-            stamp=timestamp(),
-            target=self.target[-16:],
-            counter=self.counter,
-            time=now - self.start_time,
-            delta=now - self.prev_time,
-            ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
-            rate=v_rate,
-            decay=v_weight_decay,
-            loss=v_loss,
-            perp=v_perp,
-            avgloss=self.avg_loss[0] / self.avg_loss[1],
-            avgperp=self.avg_perp[0] / self.avg_perp[1],
-            step=self.counter,
-            ))
-    self.prev_time = now
-    self.summary_log.add_summary(v_summary, self.counter)
-    self.summary_log.flush()
-    self.counter = self.current_step.incr()
-    self.start_count = self.counter
-    #load_lightweight(self.global_step, self.counter, session=self.sess)
-
-    return v_loss
+    return tflex.trainer_fit(self)
 
   def variables(self, index):
-    return self.fetch_vars[index % len(self.fetch_vars)]
+    return tflex.trainer_variables(self, index)
+
+def trainer_sample_batch(self):
+  args = self.args
+  return [self.sampler.sample(args.sample_ctx) for _ in range(args.batch_size)]
+
+tflex.trainer_sample_batch = trainer_sample_batch
+
+def trainer_elapsed(self, msg):
+  return self.prev_time - self.start_time
+
+tflex.trainer_elapsed = trainer_elapsed
+
+def trainer_say(self, msg):
+  print('{stamp} {target:16s} [{counter} | {time:2.4f}] {msg}'.format(stamp=timestamp(), target=self.target[-16:], counter=self.counter, time=self.elapsed(), msg=msg))
+
+tflex.trainer_say = trainer_say
+
+def trainer_variables(self, index):
+  return self.fetch_vars[index % len(self.fetch_vars)]
+
+tflex.trainer_variables = trainer_variables
+
+def trainer_update_lr(self, step=None, rate=None):
+  global_step = self.global_step
+  args = self.args
+  lr = self.lr
+  wd = self.wd
+  sess = self.sess
+  weight_decay = args.weight_decay
+  if not args.learning_rate_cos:
+    if step is None:
+      step = eval_lightweight(global_step, session=sess)
+    if rate is None:
+      rate = args.learning_rate
+    if callable(rate):
+      rate = rate(step)
+    load_lightweight(lr, rate, session=sess)
+  load_lightweight(wd, weight_decay, session=sess)
+  v_rate = eval_lightweight(lr, session=sess)
+  v_weight_decay = eval_lightweight(wd, session=sess)
+  return v_rate, v_weight_decay
+
+tflex.trainer_update_lr = trainer_update_lr
+
+def trainer_ensure(self):
+  if self.init is not None:
+    args = self.args
+    self.say('Initializing...')
+    self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=tflex.initialize_timeout))
+    if not args.fresh_model:
+      tflex.load_trainer(self)
+    self.say('Initialized.')
+    self.init = None
+
+tflex.trainer_ensure = trainer_ensure
+
+def trainer_fit(self):
+  tflex.trainer_ensure(self)
+  load_lightweight(self.global_step, self.counter, session=self.sess)
+  v_rate, v_weight_decay = self.update_lr()
+  self.say('Generating batch...')
+  batch = self.sample_batch()
+  print(repr(self.enc.decode(batch[0]))[0:150] + '...')
+  self.say('Loading context...')
+  load_lightweight(self.context, batch, session=self.sess, timeout_in_ms=tflex.context_load_timeout)
+  self.say('Running opt_apply...')
+  (_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
+  self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
+                   self.avg_loss[1] * 0.99 + 1.0]
+  v_perp = math.exp(v_loss)
+  self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
+                   self.avg_perp[1] * 0.99 + 1.0]
+  now = time.time()
+  print('{stamp} {target:16s} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.8f} step={step}'
+      .format(
+          stamp=timestamp(),
+          target=self.target[-16:],
+          counter=self.counter,
+          time=now - self.start_time,
+          delta=now - self.prev_time,
+          ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
+          rate=v_rate,
+          decay=v_weight_decay,
+          loss=v_loss,
+          perp=v_perp,
+          avgloss=self.avg_loss[0] / self.avg_loss[1],
+          avgperp=self.avg_perp[0] / self.avg_perp[1],
+          step=self.counter,
+          ))
+  self.prev_time = now
+  self.summary_log.add_summary(v_summary, self.counter)
+  self.summary_log.flush()
+  self.counter = self.current_step.incr()
+  self.start_count = self.counter
+  #load_lightweight(self.global_step, self.counter, session=self.sess)
+  return v_loss
+
+tflex.trainer_fit = trainer_fit
+
+def trainer_toplevel(self):
+  while not self.stopped:
+    while self.paused:
+      time.sleep(0.1)
+    tflex.trainer_fit(self)
+    time.sleep(0.1)
+
+tflex.trainer_toplevel = trainer_toplevel
 
 def trainer_starting(trainer):
   if trainer.init:
@@ -457,7 +495,7 @@ def trainer_alive(trainer):
   if hasattr(trainer, "dead"):
     if trainer.dead:
       return False
-  if not trainer.is_alive():
+  if not trainer.thread.is_alive():
     return False
   return True
 
@@ -875,7 +913,8 @@ def main():
           if tflex.ensure_on_init:
             with tflex.trainers_init_sema:
               trainer.ensure()
-          trainer.start()
+          if not trainer.thread.is_alive():
+            trainer.thread.start()
           with tflex.trainers_lock:
             for existing in tflex.trainers:
               if existing.target == target:
@@ -948,8 +987,8 @@ def main():
     i = 0
     sync_thread = None
     first = True
-    tflex.averaging_yield_time = 1.0 # was 3.0
-    tflex.averaging = True
+    tflex.averaging_yield_time = 0.05 # was 1.0 # was 3.0
+    tflex.averaging = not args.no_averaging
     tflex.cycle = None
     while True:
       tflex.check_commands()
