@@ -219,7 +219,8 @@ def main():
             tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=context[:, 1:], logits=output['logits'][:, :-1]))
 
-        val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
+        #val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
+        val_context = tf.Variable(tf.zeros(shape=[args.val_batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="val_context")
         val_output = model.model(hparams=hparams, X=val_context)
         val_loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -433,7 +434,9 @@ def main():
             print('Calculating validation loss...')
             losses = []
             for batch in tqdm.tqdm(val_batches):
-                losses.append(sess.run(val_loss, feed_dict={val_context: batch}))
+                val_context.load(batch, session=sess)
+                v_loss = sess.run(val_loss)
+                losses.append(v_loss)
             v_val_loss = np.mean(losses)
             v_summary = sess.run(val_loss_summary, feed_dict={val_loss: v_val_loss})
             summary_log.add_summary(v_summary, counter)
