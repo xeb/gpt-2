@@ -218,6 +218,8 @@ class TrainGPT2(object):
     if '::' in target:
       target, core = target.split('::')
       core = int(core)
+      print(target, 'core', core)
+      self.core = core
     self.fresh = True
     self.dead = False
     self.args = args
@@ -244,8 +246,8 @@ class TrainGPT2(object):
       session.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=tflex.tpu_init_timeout))
 
     device = None
-    if core >= 0:
-      device = tflex.get_core(core, session=session) # not quite right; punt for now.
+    if self.core >= 0:
+      device = tflex.get_core(self.core, session=session) # not quite right; punt for now.
     self.device = device
     with tf.device(device), tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
       #context = tf.placeholder(tf.int32, [args.batch_size, None])
@@ -385,13 +387,13 @@ def trainer_sample_batch(self):
 
 tflex.trainer_sample_batch = trainer_sample_batch
 
-def trainer_elapsed(self, msg):
+def trainer_elapsed(self):
   return self.prev_time - self.start_time
 
 tflex.trainer_elapsed = trainer_elapsed
 
 def trainer_say(self, msg):
-  print('{stamp} {target:16s} [{counter} | {time:2.4f}] {msg}'.format(stamp=timestamp(), target=self.target[-16:], counter=self.counter, time=self.elapsed(), msg=msg))
+  print('{stamp} {target:16s}::{core} [{counter} | {time:2.4f}] {msg}'.format(stamp=timestamp(), target=self.target[-16:], core=self.core, counter=self.counter, time=self.elapsed(), msg=msg))
 
 tflex.trainer_say = trainer_say
 
@@ -451,16 +453,16 @@ def trainer_fit(self):
   self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
                    self.avg_perp[1] * 0.99 + 1.0]
   now = time.time()
-  print('{stamp} {target:16s} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.8f} step={step}'
+  print('{stamp} {target:16s}::{core} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} perp={perp:2.4f} avgloss={avgloss:2.4f} avgperp={avgperp:2.4f} rate={rate:0.8f} step={step}'
       .format(
           stamp=timestamp(),
+          core=self.core,
           target=self.target[-16:],
           counter=self.counter,
           time=now - self.start_time,
           delta=now - self.prev_time,
           ops=self.args.sample_ctx * self.args.batch_size / (now - self.prev_time),
           rate=v_rate,
-          decay=v_weight_decay,
           loss=v_loss,
           perp=v_perp,
           avgloss=self.avg_loss[0] / self.avg_loss[1],
@@ -887,7 +889,7 @@ def main():
     tflex.trainers = []
     tflex.pending_trainers = []
     tflex.pinned_trainers = []
-    tflex.trainers_sema = threading.BoundedSemaphore(value=6)
+    tflex.trainers_sema = threading.BoundedSemaphore(value=8)
     tflex.trainers_init_sema = threading.BoundedSemaphore(value=100)
     tflex.trainers_lock = threading.RLock()
     def add_trainer(target, delaying=True):
