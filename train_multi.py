@@ -16,6 +16,7 @@ import math
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.ops import gradients
 from tensorflow.python.framework.errors_impl import InvalidArgumentError, AbortedError, DeadlineExceededError
 
 import model, sample, encoder
@@ -120,6 +121,8 @@ parser.add_argument('--debug_print_trainable_vars', default=False, action='store
 parser.add_argument('--allow_growth', default=False, action='store_true', help="Set config.gpu_options.allow_growth = True")
 parser.add_argument('--allow_soft_placement', default=False, action='store_true', help="Set config.gpu_options.allow_soft_placement = True")
 parser.add_argument('--disable_layout_optimizer', default=False, action='store_true', help="Set config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF")
+parser.add_argument('--colocate_gradients', default=False, action='store_true')
+parser.add_argument('--no-report_tensor_allocations_upon_oom', default=True, action='store_false')
 
 parser.add_argument('--debug_before_training', default=False, action='store_true', help="Drop into debugger before starting the training loop")
 
@@ -287,7 +290,7 @@ class TrainGPT2(threading.Thread):
       parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
       print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
 
-      opt_grads = tf.gradients(loss, train_vars)
+      opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients)
       opt_grads = list(zip(opt_grads, train_vars))
       opt_apply = opt.apply_gradients(opt_grads)
       summary_loss = tf.summary.scalar('loss', loss)
