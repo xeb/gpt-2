@@ -66,8 +66,8 @@ parser.add_argument('--save_time', metavar='N', type=float, default=15.0, help='
 parser.add_argument('--max_to_keep', metavar='N', type=int, default=5, help='Only keep the last N checkpoints')
 
 parser.add_argument('--val_dataset', metavar='PATH', type=str, default=None, help='Dataset for validation loss, defaults to --dataset.')
-parser.add_argument('--val_batch_size', metavar='SIZE', type=int, default=1, help='Batch size for validation.')
-parser.add_argument('--val_batch_count', metavar='N', type=int, default=80, help='Number of batches for validation.')
+parser.add_argument('--val_batch_size', metavar='SIZE', type=int, default=-1, help='Batch size for validation.')
+parser.add_argument('--val_batch_count', metavar='N', type=int, default=-1, help='Number of batches for validation.')
 parser.add_argument('--val_every', metavar='STEPS', type=int, default=0, help='Calculate validation loss every STEPS steps.')
 
 parser.add_argument('--init_tpu', default=False, action='store_true', help='Initialize TPU session.')
@@ -178,6 +178,10 @@ def main():
 
     if args.sample_num < 0:
         args.sample_num = args.batch_size
+    if args.val_batch_size < 0:
+        args.val_batch_size = args.batch_size
+    if args.val_batch_count < 0:
+        args.val_batch_count = 80 // args.val_batch_size
 
     if args.sample_length < 0:
         args.sample_length = min(64, hparams.n_ctx) - 1
