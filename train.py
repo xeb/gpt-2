@@ -13,6 +13,8 @@ import time
 import tqdm
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.ops import gradients
+from tensorflow.core.protobuf import config_pb2
 
 import model, sample, encoder
 from load_dataset import load_dataset, Sampler, TextSampler
@@ -107,7 +109,10 @@ parser.add_argument('--debug_print_all_vars', default=False, action='store_true'
 parser.add_argument('--debug_print_trainable_vars', default=False, action='store_true', help="Print trainable variables after running one training step")
 
 parser.add_argument('--allow_growth', default=False, action='store_true', help="Set config.gpu_options.allow_growth = True")
+parser.add_argument('--allow_soft_placement', default=False, action='store_true', help="Set config.allow_soft_placement = True")
 parser.add_argument('--disable_layout_optimizer', default=False, action='store_true', help="Set config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF")
+parser.add_argument('--colocate_gradients', default=False, action='store_true')
+parser.add_argument('--no-report_tensor_allocations_upon_oom', default=True, action='store_false')
 
 parser.add_argument('--debug_before_training', default=False, action='store_true', help="Drop into debugger before starting the training loop")
 
@@ -190,22 +195,28 @@ def main():
             args.only_train_transformer_layers = True
 
     config = tf.ConfigProto()
-    config.allow_soft_placement = True
+    config.allow_soft_placement = False
     if args.allow_growth:
         config.gpu_options.allow_growth = True
+    if args.allow_soft_placement:
+        config.allow_soft_placement = True
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
-    with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
-        cores = sess.list_devices()[2:]
-        core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
-        with tf.device(core):
-          #context = tf.placeholder(tf.int32, [args.batch_size, None])
-          context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context")
-          context_in = randomize(context, hparams, args.noise)
-          output = model.model(hparams=hparams, X=context_in)
-          loss = tf.reduce_mean(
-              tf.nn.sparse_softmax_cross_entropy_with_logits(
-                  labels=context[:, 1:], logits=output['logits'][:, :-1]))
+    options = config_pb2.RunOptions(report_tensor_allocations_upon_oom=(not args.no_report_tensor_allocations_upon_oom))
+    sess = tflex.Session(config=config, init_tpu=args.init_tpu)
+    devices = sess.list_devices()
+    device = None if args.device < 0 else devices[args.device].name
+    with sess.as_default(), tf.device(device):
+        #context = tf.placeholder(tf.int32, [args.batch_size, None])
+        context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context")
+        context_in = randomize(context, hparams, args.noise)
+        output = model.model(hparams=hparams, X=context_in)
+        loss = tf.reduce_mean(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=context[:, 1:], logits=output['logits'][:, :-1]))
+
+        if hparams.dtype == tf.bfloat16:
+            loss = tf.cast(loss, tf.float32)
 
         if args.val_every > 0:
             val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
@@ -213,6 +224,8 @@ def main():
             val_loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
+            if hparams.dtype == tf.bfloat16:
+                val_loss = tf.cast(val_loss, tf.float32)
             val_loss_summary = tf.summary.scalar('val_loss', val_loss)
 
 
@@ -303,9 +316,9 @@ def main():
             summary_loss = tf.summary.scalar('loss', opt_apply)
         else:
             if args.memory_saving_gradients:
-                opt_grads = memory_saving_gradients.gradients(loss, train_vars)
+                opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients)
             else:
-                opt_grads = tf.gradients(loss, train_vars)
+                opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_device=args.colocate_gradients)
             opt_grads = list(zip(opt_grads, train_vars))
             opt_apply = opt.apply_gradients(opt_grads)
             summary_loss = tf.summary.scalar('loss', loss)
