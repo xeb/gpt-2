@@ -248,7 +248,7 @@ class TrainGPT2(threading.Thread):
       #context = tf.placeholder(tf.int32, [args.batch_size, None])
       context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
       context_in = randomize(context, hparams, args.noise)
-      output = model.model(hparams=hparams, X=context_in, scope=scope)
+      output = model.model(hparams=hparams, X=context_in, scope=scope, checkpoint=args.memory_saving_gradients)
       loss = tf.reduce_mean(
         tf.nn.sparse_softmax_cross_entropy_with_logits(
           labels=context[:, 1:], logits=output['logits'][:, :-1]))

@@ -60,7 +60,7 @@ parser.add_argument('--restore_from', type=str, default='latest', help='Either "
 parser.add_argument('--run_name', type=str, default='run1', help='Run id. Name of subdirectory in checkpoint/ and samples/')
 parser.add_argument('--sample_every', metavar='N', type=int, default=100, help='Generate samples every N steps')
 parser.add_argument('--sample_length', metavar='TOKENS', type=int, default=-1, help='Sample this many tokens')
-parser.add_argument('--sample_num', metavar='N', type=int, default=1, help='Generate this many samples')
+parser.add_argument('--sample_num', metavar='N', type=int, default=-1, help='Generate this many samples')
 parser.add_argument('--save_every', metavar='N', type=int, default=-1, help='Write a checkpoint every N steps')
 parser.add_argument('--save_time', metavar='N', type=float, default=15.0, help='Write a checkpoint every N minutes')
 parser.add_argument('--max_to_keep', metavar='N', type=int, default=5, help='Only keep the last N checkpoints')
@@ -181,8 +181,11 @@ def main():
     if args.n_layer >= 0:
         hparams.n_layer=args.n_layer
 
+    if args.sample_num < 0:
+        args.sample_num = args.batch_size
+
     if args.sample_length < 0:
-        args.sample_length = hparams.n_ctx - 1
+        args.sample_length = min(64, hparams.n_ctx) - 1
     if args.sample_length > hparams.n_ctx:
         raise ValueError(
             "Can't get samples longer than window size: %s" % hparams.n_ctx)
@@ -210,8 +213,7 @@ def main():
         #context = tf.placeholder(tf.int32, [args.batch_size, None])
         context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context")
         context_in = randomize(context, hparams, args.noise)
-        sample_context = tf.Variable(tf.zeros(shape=[args.batch_size, 1], dtype=tf.int32), dtype=tf.int32, name="sample_context")
-        output = model.model(hparams=hparams, X=context_in)
+        output = model.model(hparams=hparams, X=context_in, checkpoint=args.memory_saving_gradients)
         loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=context[:, 1:], logits=output['logits'][:, :-1]))
@@ -230,15 +232,8 @@ def main():
             val_loss_summary = tf.summary.scalar('val_loss', val_loss)
 
 
-        tf_sample = sample.sample_sequence(
-            hparams=hparams,
-            length=args.sample_length,
-            context=sample_context,
-            batch_size=args.batch_size,
-            temperature=1.0,
-            top_k=args.top_k,
-            top_p=args.top_p,
-            epsilon=epsilon)
+        tflex.tf_sample = None
+        tflex.sample_context = None
 
         all_vars = [v for v in tf.trainable_variables() if 'model' in v.name]
         train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
@@ -407,13 +402,26 @@ def main():
 
         @tflex.register_command
         def generate_samples():
+            if tflex.tf_sample is None:
+              with tf.device(None):
+                tflex.sample_context = tf.Variable(tf.zeros(shape=[args.batch_size, 1], dtype=tf.int32), dtype=tf.int32, name="sample_context")
+                print('Initializing sampler...')
+                tflex.tf_sample = sample.sample_sequence(
+                    hparams=hparams,
+                    length=args.sample_length,
+                    context=tflex.sample_context,
+                    batch_size=args.batch_size,
+                    temperature=1.0,
+                    top_k=args.top_k,
+                    top_p=args.top_p,
+                    epsilon=epsilon)
             print('Generating samples...')
             context_tokens = data_sampler.sample(1)
             all_text = []
             index = 0
-            sample_context.load(args.batch_size * [context_tokens], session=sess)
+            tflex.sample_context.load(args.batch_size * [context_tokens], session=sess)
             while index < args.sample_num:
-                out = sess.run(tf_sample)
+                out = sess.run(tflex.tf_sample)
                 for i in range(min(args.sample_num - index, args.batch_size)):
                     text = enc.decode(out[i])
                     text = '======== SAMPLE {} ========\n{}\n'.format(

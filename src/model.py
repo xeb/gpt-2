@@ -209,7 +209,7 @@ def positions_for(tokens, past_length):
     return expand_tile(past_length + tf.range(nsteps), batch_size)
 
 
-def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
+def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE, checkpoint=False):
     dtype = hparams.dtype if hparams else tf.float32
     with tf.variable_scope(scope, reuse=reuse, dtype=dtype):
         results = {}
@@ -240,7 +240,7 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
             h, present = block(h, 'h%d' % layer, past=past, hparams=hparams,
                 attn=attn, batch_size=batch, seq_length=sequence)
             #if layer == 10:
-            if layer % every == 0:
+            if checkpoint and layer % every == 0:
                 tf.add_to_collection('checkpoints', h)
             presents.append(present)
         results['present'] = tf.stack(presents, axis=1)
