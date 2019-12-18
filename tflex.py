@@ -164,6 +164,13 @@ def maketree(path):
     except:
         pass
 
+def cast_variables(variables):
+  for variable in variables:
+    if variable.dtype == tf.bfloat16:
+      yield tf.cast(variable, tf.float32)
+    else:
+      yield variable
+
 def save_variables(ckpt, session=None, var_list=None):
     session = session or tf.get_default_session()
     vs = var_list or tf.trainable_variables()
@@ -171,7 +178,8 @@ def save_variables(ckpt, session=None, var_list=None):
     fname = ckpt+'.tmp'
     with h5py.File(fname, "w") as f:
       for variables in tqdm.tqdm(list(split_by_params(vs))):
-        values = session.run(variables)
+        ops = [x for x in cast_variables(variables)]
+        values = session.run(ops)
         for value, variable in zip(values, variables):
           name = variable.name
           shape = variable.shape.as_list()
