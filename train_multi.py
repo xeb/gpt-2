@@ -224,12 +224,14 @@ class TrainGPT2(threading.Thread):
       config = config_pb2.ConfigProto(operation_timeout_in_ms=timeout)
       self.timeout = timeout
       config.allow_soft_placement = False
-      if args.allow_soft_placement:
-          config.allow_soft_placement = True
       if args.allow_growth:
           config.gpu_options.allow_growth = True
+      if args.allow_soft_placement:
+          config.allow_soft_placement = True
       if args.disable_layout_optimizer:
           config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
+      options = config_pb2.RunOptions(report_tensor_allocations_upon_oom=(not args.no_report_tensor_allocations_upon_oom))
+      self.options = options
       session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
       tflex.pinned_sessions.append([target, session]) # prevent GC'ing sessions, because the destructor seems to freeze.
     if args.init_tpu:
