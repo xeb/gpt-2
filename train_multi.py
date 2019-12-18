@@ -122,7 +122,7 @@ parser.add_argument('--allow_growth', default=False, action='store_true', help="
 parser.add_argument('--allow_soft_placement', default=False, action='store_true', help="Set config.gpu_options.allow_soft_placement = True")
 parser.add_argument('--disable_layout_optimizer', default=False, action='store_true', help="Set config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF")
 parser.add_argument('--colocate_gradients', default=False, action='store_true')
-parser.add_argument('--no-report_tensor_allocations_upon_oom', default=True, action='store_false')
+parser.add_argument('--no_report_tensor_allocations_upon_oom', default=True, action='store_false')
 
 parser.add_argument('--debug_before_training', default=False, action='store_true', help="Drop into debugger before starting the training loop")
 
@@ -133,7 +133,7 @@ parser.add_argument('--seed', type=int, default=-1, help='Deterministic seed for
 parser.add_argument('--save_graph', default=False, action='store_true', help="Save TensorFlow graph to summary log (to see ops in tensorboard)")
 
 parser.add_argument('--device', type=int, default=-1, help='device to use.')
-parser.add_argument('--no-averaging', default=False, action='store_true')
+parser.add_argument('--no_averaging', default=False, action='store_true')
 
 PST = pytz.timezone('US/Pacific')
 
