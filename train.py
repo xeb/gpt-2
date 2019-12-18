@@ -75,7 +75,6 @@ parser.add_argument('--init_tpu', default=False, action='store_true', help='Init
 parser.add_argument('--fresh_model', default=False, action='store_true', help="Don't load model from disk; initialize model weights to random values")
 parser.add_argument('--save_on_ctrlc', default=False, action='store_true', help='When execution is interrupted, should we save the model to disk?')
 parser.add_argument('--debug_on_ctrlc', default=False, action='store_true', help='When execution is interrupted, attach a debugger (pdb.set_trace())')
-parser.add_argument('--float16', default=False, action='store_true', help='Use float16 weights?')
 parser.add_argument('--dtype', type=str, default='float32', help='dtype. <float32|float16|bfloat16>.')
 
 # 1.5B
@@ -162,12 +161,9 @@ def main():
         hparams.dtype = tf.float16
         epsilon = -65500
     elif args.dtype == 'bfloat16':
-        pass
+        hparams.dtype = tf.bfloat16
     else:
         print('Unknown dtype', args.dtype)
-    if args.float16:
-        hparams.dtype = tf.bfloat16
-        epsilon = -65500
 
     with open(os.path.join('models', args.model_name, 'hparams.json')) as f:
         hparams.override_from_dict(json.load(f))
