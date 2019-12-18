@@ -213,13 +213,12 @@ def main():
             tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=context[:, 1:], logits=output['logits'][:, :-1]))
 
-        if args.val_every > 0:
-            val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
-            val_output = model.model(hparams=hparams, X=val_context)
-            val_loss = tf.reduce_mean(
-                tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
-            val_loss_summary = tf.summary.scalar('val_loss', val_loss)
+        val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
+        val_output = model.model(hparams=hparams, X=val_context)
+        val_loss = tf.reduce_mean(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
+        val_loss_summary = tf.summary.scalar('val_loss', val_loss)
 
 
         tflex.tf_sample = None
@@ -356,13 +355,12 @@ def main():
         print('Loading dataset...')
         seed = None if args.seed < 0 else args.seed
         data_sampler = make_sampler(dataset=args.dataset, enc=enc, seed=seed, combine=args.combine)
-        if args.val_every > 0:
-            # Sample from validation set once with fixed seed to make
-            # it deterministic during training as well as across runs.
-            val_dataset = args.val_dataset if args.val_dataset else args.dataset
-            val_data_sampler = make_sampler(dataset=val_dataset, enc=enc, seed=1, combine=args.combine)
-            val_batches = [[val_data_sampler.sample(hparams.n_ctx) for _ in range(args.val_batch_size)]
-                           for _ in range(args.val_batch_count)]
+        # Sample from validation set once with fixed seed to make
+        # it deterministic during training as well as across runs.
+        val_dataset = args.val_dataset if args.val_dataset else args.dataset
+        val_data_sampler = make_sampler(dataset=val_dataset, enc=enc, seed=1, combine=args.combine)
+        val_batches = [[val_data_sampler.sample(hparams.n_ctx) for _ in range(args.val_batch_size)]
+                       for _ in range(args.val_batch_count)]
 
         print('Training...')
         counter = 1
@@ -427,8 +425,6 @@ def main():
 
         @tflex.register_command
         def validation():
-            if args.val_every <= 0:
-              return
             print('Calculating validation loss...')
             losses = []
             for batch in tqdm.tqdm(val_batches):
