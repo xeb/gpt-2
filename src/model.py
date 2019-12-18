@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.contrib.training import HParams
 import os
 import math
+import tflex
 
 def default_hparams():
     return HParams(
@@ -16,21 +17,34 @@ def default_hparams():
         dtype=tf.float32
     )
 
-_cores = None
+ #_cores = None
+ #
+ #def get_core(i, session=None):
+ #  global _cores
+ #  if session is None:
+ #    session = tf.get_default_session()
+ #  if _cores is None:
+ #    _cores = session.list_devices()[2:]
+ #  n = len(_cores)
+ #  if n <= 0:
+ #    return None
+ #  result = _cores[i % n].name
+ #  if 'GPT2_VERBOSE' in os.environ:
+ #    print(result)
+ #  return result
 
-def get_core(i, session=None):
-  global _cores
+def get_cores(session=None):
   if session is None:
     session = tf.get_default_session()
-  if _cores is None:
-    _cores = session.list_devices()[2:]
-  n = len(_cores)
-  if n <= 0:
-    return None
-  result = _cores[i % n].name
-  if 'GPT2_VERBOSE' in os.environ:
-    print(result)
-  return result
+  cores = session.list_devices()[2:2+8]
+  cores = cores[::-1]
+  return cores
+
+def get_core(i, session=None):
+  cores = get_cores(session=session)
+  if len(cores) > 0:
+    return cores[i % len(cores)].name
+
 
 def get_variable(name):
     name = os.path.join(tf.get_variable_scope().name, name)
@@ -254,3 +268,230 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE, checkpoint=
           logits = tf.cast(logits, tf.float32)
         results['logits'] = logits
         return results
+
+from tensorflow.python.ops import gradients
+import memory_saving_gradients
+
+class Shard(object):
+  pass
+
+def randomize(context, hparams, p):
+    if p > 0:
+        mask = tf.random.uniform(shape=tf.shape(context)) < p
+        noise = tf.random.uniform(shape=tf.shape(context), minval=0, maxval=hparams.n_vocab, dtype=tf.int32)
+        return tf.where(mask, noise, context)
+    else:
+        return context
+
+from contextlib import contextmanager
+
+@contextmanager
+def nullcontext(enter_result=None):
+    yield enter_result
+
+def bfloat16context(hparams):
+  if hparams.dtype == tf.bfloat16:
+    return tf.contrib.tpu.bfloat16_scope()
+  else:
+    return nullcontext()
+
+def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, global_step=None, graph=None, scope='model', skip_cores=4, max_cores=4, length=None, sample_ctx=None, encoder=None, temperature=1, top_k=0, top_p=0.0, *args, **kws):
+    if graph is None:
+        graph = tf.get_default_graph()
+    if length is None:
+        length = hparams.n_ctx
+    if sample_ctx is None:
+        sample_ctx = length
+    results = {}
+    results['shards'] = []
+    #results = {}
+    #results['present'] = []
+    #results['logits'] = []
+    with graph.as_default():
+      #batch_size, *rest = shape_list(X)
+      cores = get_cores()[skip_cores:]
+      num_cores = len(cores)
+      if max_cores is not None:
+        if num_cores > max_cores:
+          num_cores = max_cores
+      if num_cores > batch_size:
+        num_cores = batch_size
+      assert(num_cores > 0)
+      #if num_cores <= 0:
+      #  return model(hparams, X, scope=scope, *args, **kws)
+      print('Sharding across %d cores' % len(cores))
+      assert(batch_size % num_cores == 0)
+      #contexts = tf.split(X, num_cores, axis=0)
+      for i in range(num_cores):
+        core = cores[i].name
+        prefix = 'core%04d' % i
+        #context = contexts[i]
+        #context = tf.placeholder(tf.int32, [batch_size // num_cores, None])
+        #context_in = randomize(context, hparams, noise)
+        with tf.device(core), bfloat16context(hparams), tf.variable_scope(prefix, reuse=tf.AUTO_REUSE):
+          context = tf.Variable(tf.zeros(shape=[batch_size // num_cores, sample_ctx], name="context", dtype=tf.int32), dtype=tf.int32, shape=[batch_size // num_cores, sample_ctx], trainable=False)
+          #context_set = tf.placeholder(tf.int32, [batch_size // num_cores, None])
+          #feed_op = tf.assign(context, context_set)
+          context_in = randomize(context, hparams, noise)
+          output = model(hparams=hparams, X=context_in, scope=scope, checkpoint=use_memory_saving_gradients, *args, **kws)
+          #if hparams.dtype == tf.bfloat16:
+          #  output['logits'] = tf.cast(output['logits'], tf.float32)
+          infer = None
+          if encoder:
+            infer = sample.sample_sequence(
+                hparams=hparams, length=length,
+                start_token=encoder.encoder['<|endoftext|>'],
+                batch_size=batch_size,
+                temperature=temperature, top_k=top_k, top_p=top_p
+            )[:, 1:]
+
+          loss_batch = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                  labels=context[:, 1:], logits=output['logits'][:, :-1])
+          loss = tf.reduce_mean(loss_batch)
+          #if hparams.dtype != tf.float32:
+          #    loss = tf.cast(loss, tf.float32)
+
+        global_vars = [v for v in tf.global_variables() if v.name.startswith(prefix + '/' + scope + '/')]
+        all_vars = [v for v in tf.trainable_variables() if v.name.startswith(prefix + '/' + scope + '/')]
+        def should_train_variable(v):
+          if only_train_transformer_layers:
+            if '/h' not in v.name and '/ln_f' not in v.name:
+              return False
+            #for i in range(1):
+            #  if ('/h%01d/' % i) in v.name:
+            #    return False
+            #  if ('/h%02d/' % i) in v.name:
+            #    return False
+          print(v)
+          return True
+        train_vars = [v for v in all_vars if should_train_variable(v)]
+
+        parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
+        print("Shard %d is using %d parameters (%.2fM) (scope='%s/')" % (i, parameter_count, parameter_count/(1024.0*1024.0), prefix + '/' + scope))
+
+        with tf.device(core), bfloat16context(hparams), tf.variable_scope(prefix, reuse=tf.AUTO_REUSE):
+          if optimizer == 'adam':
+              opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
+          elif optimizer == 'sgd':
+              opt = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+          elif optimizer == 'ada':
+            params = {}
+            params["decay_type"] = "adam"
+            #params["beta1"] = 0.9
+            params["beta1"] = 0.0
+            params["beta2"] = 0.999
+            lr = learning_rate
+            if params["decay_type"] == "adam":
+                decay_rate = adafactor_decay_rate_adam(params["beta2"])
+            elif params["decay_type"] == "pow":
+                decay_rate = adafactor_decay_rate_pow(params["decay_exponent"])
+            else:
+                raise ValueError("unknown optimizer_adafactor_decay_type")
+
+            if not "weight_decay" in params.keys():
+                opt = AdafactorOptimizer(
+                    learning_rate=lr,
+                    decay_rate=decay_rate,
+                    beta1=params["beta1"],
+                    name="Adafactor")
+            else:
+                AdafactorWOptimizer = tf.contrib.opt.extend_with_decoupled_weight_decay(AdafactorOptimizer)
+
+                opt = AdafactorWOptimizer(
+                    weight_decay=params["weight_decay"] * lr,
+                    learning_rate=lr,
+                    decay_rate=decay_rate,
+                    beta1=params["beta1"],
+                    name="AdafactorW")
+          elif optimizer == 'ada':
+              import tensor2tensor.utils.optimize
+              from tensor2tensor.utils import hparam
+              import tensor2tensor.models.research
+              from tensor2tensor.utils import registry
+              ada_hparams = registry.hparams('afx_mimic_adam')
+              ada_hparams.optimizer_adafactor_beta1 = 0.0
+              ada_hparams.optimizer_adafactor_factored = True
+              opt = tensor2tensor.utils.optimize.adafactor(learning_rate=learning_rate, hparams=ada_hparams)
+          elif optimizer == None:
+            pass
+          else:
+              exit('Bad optimizer:', optimizer)
+          r = Shard()
+          r.prefix = prefix
+          r.scope = scope
+          r.context = context
+          r.context_in = context_in
+          #r.context_set = context_set
+          #r.feed_op = feed_op
+          r.device = core
+          r.output = output
+          r.infer = infer
+          if optimizer is not None:
+            #opt_apply = opt.minimize(loss, var_list=train_vars, global_step=global_step, colocate_gradients_with_ops=colocate_gradients_with_ops)
+            #gate_gradients=None
+            gate_gradients=tf.train.Optimizer.GATE_NONE
+            if use_memory_saving_gradients:
+              #grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
+              #grads = memory_saving_gradients.gradients_memory if i == 0 else memory_saving_gradients.gradients_speed
+              #grads = memory_saving_gradients.gradients_speed if i == 0 else memory_saving_gradients.gradients_speed
+              grads = memory_saving_gradients.gradients
+              grads = grads(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, gate_gradients=gate_gradients)
+            else:
+              grads = gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, gate_gradients=gate_gradients)
+            grads = list(zip(grads, train_vars))
+            grads = [(g, v) if g is not None else (tf.zeros_like(v), v) for g, v in grads]  # replace disconnected gradients with zeros
+            opt_apply = opt.apply_gradients(grads, global_step=global_step)
+            fit = tf.tuple([loss], control_inputs=[opt_apply])
+            r.loss_batch = loss_batch
+            r.loss = loss
+            r.opt = opt
+            r.opt_apply = opt_apply
+            r.fit = fit
+          r.all_vars = all_vars
+          r.train_vars = train_vars
+          r.global_vars = global_vars
+          r.parameter_count = parameter_count
+          results['shards'].append(r)
+        #results['present'].append(r['present'])
+        #results['logits'].append(r['logits'])
+      #present = tf.concat(results['present'], axis=0)
+      #logits = tf.concat(results['logits'], axis=0)
+      #import pdb
+      #pdb.set_trace()
+      #results['present'] = present
+      #results['logits'] = logits
+      inputs = [x.context for x in results['shards']]
+      results['inputs'] = inputs
+      def get_feed_dict(batch, session=None, options=None):
+        session = session or tf.get_default_session()
+        r = {}
+        j = batch_size // num_cores
+        parts = tflex.tuples(j, batch)
+        assert(batch_size % num_cores == 0)
+        shards = results['shards']
+        def load(i):
+          context = inputs[i]
+          tokens = parts[i]
+          #r[context] = tokens
+          shard = shards[i]
+          with tf.device(shard.device):
+            print('Loading context', i)
+            #session.run(shard.feed_op, feed_dict={shard.context_set: tokens}, options=options)
+            tflex.load(shard.context, tokens, session=session, timeout_in_ms=15000)
+            #session.run(shard.feed_op, feed_dict={shard.context_set: tokens}, options=options)
+            print('Loaded context', i)
+        for thread in tflex.parallelize([i for i in range(len(inputs))], load):
+          thread.join()
+        #for i, context in enumerate(inputs):
+        #  tokens = parts[i]
+        #  #r[context] = tokens
+        #  shard = shards[i]
+        #  with tf.device(shard.device):
+        #    print('Loading context')
+        #    #session.run(shard.feed_op, feed_dict={shard.context_set: tokens}, options=options)
+        #    tflex.load(shard.context, tokens, session=session, timeout_in_ms=15000)
+        #    #session.run(shard.feed_op, feed_dict={shard.context_set: tokens}, options=options)
+        #    print('Loaded')
+        return r
+      results['feed'] = get_feed_dict
+      return results

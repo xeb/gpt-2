@@ -14,6 +14,26 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib.cluster_resolver import TPUClusterResolver
 from tensorflow.python.framework import dtypes
 
+import threading
+
+def parallelize(xs, thunk, *args):
+  threads = []
+  for x in xs:
+    thread = threading.Thread(target=thunk, args=(x, *args))
+    thread.start()
+    threads.append(thread)
+  return threads
+
+# http://stackoverflow.com/questions/1624883/alternative-way-to-split-a-list-into-groups-of-n
+import itertools
+def group(n, iterable, fillvalue=None):
+    "group(3, 'ABCDEFG', 'x') --> ABC DEF Gxx"
+    args = [iter(iterable)] * n
+    return itertools.zip_longest(*args, fillvalue=fillvalue)
+
+def tuples(*args, **kws):
+  return [x for x in group(*args, **kws)]
+
 class Namespace(object):
   pass
 
@@ -42,12 +62,12 @@ class Session(tf.Session):
     super().__init__(get_session_target(target), graph=graph, config=config)
     self.init_tpu=init_tpu
 
-  def __enter__(self):
-    sess = super().__enter__()
+  def ensure(self):
     if self.init_tpu:
       print("Initializing TPU...")
-      sess.run(tpu.initialize_system())
-    return sess
+      #sess.run(tpu.initialize_system())
+      initialize_tpu(session=self, timeout_in_ms=20000)
+      self.init_tpu = None
 
 def split_by_params(vs, n=20e6, f=None):
   if f is None:
@@ -89,6 +109,15 @@ def truncate_value(variable, value, reshape=True):
   return value
 
 from tensorflow.core.protobuf import config_pb2
+
+def initialize_tpu(session=None, timeout_in_ms=None):
+  session = session or tf.get_default_session()
+  with session.as_default():
+    op = tpu.initialize_system()
+  options = None
+  if timeout_in_ms:
+    options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms)
+  return session.run(op, options=options)
 
 def load(variable, value, session=None, timeout_in_ms=None):
   session = session or tf.get_default_session()
