@@ -439,7 +439,7 @@ class TrainGPT2(threading.Thread):
     return v_loss
 
   def variables(self, index):
-    return tflex.cast_variables(self.fetch_vars[index % len(self.fetch_vars)], graph=self.sess.graph)
+    return self.fetch_vars[index % len(self.fetch_vars)]
 
 def trainer_starting(trainer):
   if trainer.init:
@@ -664,7 +664,7 @@ def update_trainers(trainers, i, sync_all=False, timeout=30):
     if tflex.trainer_fresh(trainer):
       continue
     def thunk(trainer, lock, index):
-      for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
+      for variables in ([tflex.cast_variables(trainer.variables(index=index), graph=trainer.sess.graph)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
         values = trainer.sess.run(variables, options=config_pb2.RunOptions(timeout_in_ms=tflex.read_deadline))
         try:
           lock.acquire()
