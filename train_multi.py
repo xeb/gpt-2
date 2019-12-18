@@ -416,7 +416,7 @@ class TrainGPT2(threading.Thread):
     return v_loss
 
   def variables(self, index):
-    return self.fetch_vars[index % len(self.fetch_vars)]
+    return tflex.cast_variables(self.fetch_vars[index % len(self.fetch_vars)], graph=self.sess.graph)
 
 def trainer_starting(trainer):
   if trainer.init:
