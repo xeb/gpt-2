@@ -183,9 +183,8 @@ def cast_variables(variables, graph=None, cache_ops=None):
   ops = []
   for variable in variables:
     if variable in cache:
-      yield cache[variable]
-      continue
-    if variable.dtype == dtypes.bfloat16_ref or variable.dtype == tf.bfloat16:
+      op = cache[variable]
+    elif variable.dtype == dtypes.bfloat16_ref or variable.dtype == tf.bfloat16:
       op = tf.cast(variable, tf.float32)
     else:
       op = variable
