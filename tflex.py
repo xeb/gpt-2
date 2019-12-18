@@ -12,6 +12,7 @@ import traceback
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+from tensorflow.python.framework import dtypes
 
 def get_tpu_addr(tpu_name=None):
     # Get the TPU's location
@@ -166,7 +167,7 @@ def maketree(path):
 
 def cast_variables(variables):
   for variable in variables:
-    if variable.dtype == tf.bfloat16:
+    if variable.dtype == dtypes.bfloat16_ref or variable.dtype == tf.bfloat16:
       yield tf.cast(variable, tf.float32)
     else:
       yield variable
