@@ -161,7 +161,7 @@ def load_variables(ckpt, session=None, var_list=None, reshape=False):
   vs = var_list or tf.trainable_variables()
   with h5py.File(ckpt, "r") as f:
     for variables in tqdm.tqdm(list(split_by_params(vs))):
-      values = [truncate_value(x, f[x.name], reshape=reshape)  for x in variables]
+      values = [truncate_value(x, f[variable_name(x)], reshape=reshape)  for x in variables]
       assign_values(variables, values, session=session)
 
 def maketree(path):
@@ -192,6 +192,13 @@ def cast_variables(variables, graph=None, cache_ops=None):
     ops.append(op)
   return ops
 
+import re
+
+def variable_name(variable):
+  if re.match(r'core[0-9]+/', variable.name):
+    return variable.name.split('/', 1)[-1]
+  return variable.name
+
 def save_variables(ckpt, session=None, var_list=None):
     session = session or tf.get_default_session()
     vs = var_list or tf.trainable_variables()
@@ -202,7 +209,7 @@ def save_variables(ckpt, session=None, var_list=None):
         ops = cast_variables(variables)
         values = session.run(ops)
         for value, variable in zip(values, variables):
-          name = variable.name
+          name = variable_name(variable)
           shape = variable.shape.as_list()
           dtype = variable.dtype
           dset = f.create_dataset(name, shape, dtype=np.float32)
