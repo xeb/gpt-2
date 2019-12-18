@@ -210,6 +210,7 @@ def main():
         #context = tf.placeholder(tf.int32, [args.batch_size, None])
         context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context")
         context_in = randomize(context, hparams, args.noise)
+        sample_context = tf.Variable(tf.zeros(shape=[args.batch_size, 1], dtype=tf.int32), dtype=tf.int32, name="sample_context")
         output = model.model(hparams=hparams, X=context_in)
         loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -232,7 +233,7 @@ def main():
         tf_sample = sample.sample_sequence(
             hparams=hparams,
             length=args.sample_length,
-            context=context,
+            context=sample_context,
             batch_size=args.batch_size,
             temperature=1.0,
             top_k=args.top_k,
@@ -410,7 +411,7 @@ def main():
             context_tokens = data_sampler.sample(1)
             all_text = []
             index = 0
-            context.load(args.batch_size * [context_tokens], session=sess)
+            sample_context.load(args.batch_size * [context_tokens], session=sess)
             while index < args.sample_num:
                 out = sess.run(tf_sample)
                 for i in range(min(args.sample_num - index, args.batch_size)):
