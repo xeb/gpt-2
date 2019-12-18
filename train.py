@@ -28,6 +28,8 @@ import tflex_sgdr
 import pytz
 from datetime import datetime, timezone
 
+import threading
+
 CHECKPOINT_DIR = 'checkpoint'
 SAMPLE_DIR = 'samples'
 
@@ -427,8 +429,7 @@ def main():
                                  'samples-{}').format(counter), 'w') as fp:
                 fp.write('\n'.join(all_text))
 
-        @tflex.register_command
-        def validation():
+        def do_validation():
             print('Calculating validation loss...')
             losses = []
             for batch in tqdm.tqdm(val_batches):
@@ -444,6 +445,11 @@ def main():
                     counter=counter,
                     time=time.time() - start_time,
                     loss=v_val_loss))
+
+        @tflex.register_command
+        def validation():
+          tflex.validation_thread = threading.Thread(target=do_validation)
+          tflex.validation_thread.start()
 
         start_time = time.time()
         
