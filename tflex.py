@@ -180,6 +180,7 @@ def cast_variables(variables, graph=None, cache_ops=None):
   if graph not in cache_ops:
     cache_ops[graph] = {}
   cache = cache_ops[graph]
+  ops = []
   for variable in variables:
     if variable in cache:
       yield cache[variable]
@@ -189,7 +190,8 @@ def cast_variables(variables, graph=None, cache_ops=None):
     else:
       op = variable
     cache[variable] = op
-    yield op
+    ops.append(op)
+  return ops
 
 def save_variables(ckpt, session=None, var_list=None):
     session = session or tf.get_default_session()
@@ -198,7 +200,7 @@ def save_variables(ckpt, session=None, var_list=None):
     fname = ckpt+'.tmp'
     with h5py.File(fname, "w") as f:
       for variables in tqdm.tqdm(list(split_by_params(vs))):
-        ops = [x for x in cast_variables(variables)]
+        ops = cast_variables(variables)
         values = session.run(ops)
         for value, variable in zip(values, variables):
           name = variable.name
