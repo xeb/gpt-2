@@ -233,8 +233,8 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
         presents = []
         pasts = tf.unstack(past, axis=1) if past is not None else [None] * hparams.n_layer
         assert len(pasts) == hparams.n_layer
-        every = int(math.sqrt(hparams.n_layer))
-        #every = 1
+        #every = int(math.sqrt(hparams.n_layer))
+        every = 1
         #tf.add_to_collection('checkpoints', h)
         for layer, past in enumerate(pasts):
             h, present = block(h, 'h%d' % layer, past=past, hparams=hparams,
