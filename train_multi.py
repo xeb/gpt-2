@@ -190,6 +190,23 @@ def load_lightweight(variable, value, session, timeout_in_ms=None):
     timeout_in_ms = tflex.load_lightweight_timeout
   return tflex.load(variable, value, session=session, timeout_in_ms=timeout_in_ms)
 
+tflex._cores = None
+
+def get_core(i, session=None):
+  if session is None:
+    session = tf.get_default_session()
+  if tflex._cores is None:
+    tflex._cores = session.list_devices()[2:]
+  n = len(_cores)
+  if n <= 0:
+    return None
+  result = tflex._cores[i % n].name
+  if 'GPT2_VERBOSE' in os.environ:
+    print(result)
+  return result
+
+tflex.get_core = get_core
+
 class TrainGPT2(threading.Thread):
   def __init__(self, args, hparams, sampler, enc, scope='model', target='auto', timeout=tflex.session_timeout_in_ms, session=None, counter=None):
     super(TrainGPT2, self).__init__()
@@ -218,8 +235,11 @@ class TrainGPT2(threading.Thread):
 
     #cores = session.list_devices()[2:]
     #core = cores[args.device].name if len(cores) > 0 and args.device >= 0 else None
-    #with tf.device(core):
-    if True:
+    device = None
+    if args.device >= 0:
+      device = tflex.get_core(args.device, session=session) # not quite right; punt for now.
+    self.device = device
+    with tf.device(device), tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
       #context = tf.placeholder(tf.int32, [args.batch_size, None])
       context = tf.Variable(tf.zeros(shape=[args.batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="context", trainable=False)
       context_in = randomize(context, hparams, args.noise)
@@ -227,8 +247,8 @@ class TrainGPT2(threading.Thread):
       loss = tf.reduce_mean(
         tf.nn.sparse_softmax_cross_entropy_with_logits(
           labels=context[:, 1:], logits=output['logits'][:, :-1]))
-
-    with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
+      if hparams.dtype == tf.bfloat16:
+        loss = tf.cast(loss, tf.float32)
       global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
       current_step = counter
       #load_lightweight(global_step, current_step.value, session=session)
