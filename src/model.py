@@ -295,7 +295,7 @@ def bfloat16context(hparams):
   else:
     return nullcontext()
 
-def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, global_step=None, graph=None, scope='model', skip_cores=4, max_cores=4, length=None, sample_ctx=None, encoder=None, temperature=1, top_k=0, top_p=0.0, devices=None, *args, **kws):
+def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, ungate_gradients=False, global_step=None, graph=None, scope='model', skip_cores=4, max_cores=4, length=None, sample_ctx=None, encoder=None, temperature=1, top_k=0, top_p=0.0, devices=None, *args, **kws):
     if graph is None:
         graph = tf.get_default_graph()
     if length is None:
@@ -432,8 +432,9 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
           r.infer = infer
           if optimizer is not None:
             #opt_apply = opt.minimize(loss, var_list=train_vars, global_step=global_step, colocate_gradients_with_ops=colocate_gradients_with_ops)
-            #gate_gradients=None
-            gate_gradients=tf.train.Optimizer.GATE_NONE
+            gate_gradients=None
+            if ungate_gradients:
+              gate_gradients=tf.train.Optimizer.GATE_NONE
             if use_memory_saving_gradients:
               #grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=colocate_gradients_with_ops, checkpoints='memory')
               #grads = memory_saving_gradients.gradients_memory if i == 0 else memory_saving_gradients.gradients_speed
