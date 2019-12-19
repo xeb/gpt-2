@@ -33,6 +33,7 @@ import threading
 CHECKPOINT_DIR = 'checkpoint'
 SAMPLE_DIR = 'samples'
 
+tflex.child_pid = 0
 
 parser = argparse.ArgumentParser(
     description='Fine-tune GPT-2 on your custom dataset.',
@@ -80,6 +81,8 @@ parser.add_argument('--fresh_model', default=False, action='store_true', help="D
 parser.add_argument('--save_on_ctrlc', default=False, action='store_true', help='When execution is interrupted, should we save the model to disk?')
 parser.add_argument('--debug_on_ctrlc', default=False, action='store_true', help='When execution is interrupted, attach a debugger (pdb.set_trace())')
 parser.add_argument('--dtype', type=str, default='float32', help='dtype. <float32|float16|bfloat16>.')
+
+parser.add_argument('--fork', type=str, default='')
 
 # 1.5B
 #parser.add_argument('--n_ctx', type=int, default=1024, help='For a fresh model, how large should n_ctx be?')
@@ -220,47 +223,49 @@ def main():
     #  with graph.as_default():
 
     tflex.run_options = config_pb2.RunOptions(report_tensor_allocations_upon_oom=(not args.no_report_tensor_allocations_upon_oom))
-    sess = tflex.Session(config=config, init_tpu=args.init_tpu)
-    with sess.as_default():
-        sess.ensure()
+    tflex.graph = tf.Graph()
+    with tflex.graph.as_default():
+      #tflex.init_tpu_op = tf.contrib.tpu.initialize_system()
+      tflex.init_tpu_op = None
+    def initialize_tpu(session=None, timeout_in_ms=15000):
+      if session is None:
+        session = tflex.sess
+      options = None
+      if timeout_in_ms:
+        options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms)
+      print('Initializing TPU...')
+      init_tpu_op = tflex.init_tpu_op
+      if init_tpu_op is not None:
+        session.run(init_tpu_op, options=options)
+        print('Initialized TPU')
+        return True
+      return False
+    tflex.sess = tflex.Session(config=config, init_tpu=args.init_tpu, graph=tflex.graph)
+    if args.init_tpu:
+      initialize_tpu()
+    with tflex.graph.as_default():
+        #tflex.sess.ensure()
         with tf.variable_scope(tf.get_variable_scope().name, reuse=tf.AUTO_REUSE):
             global_step = tflex.get_variable('global_step') or tf.get_variable('global_step', shape=(), dtype=tf.int32, trainable=False)
             current_step = args.learning_rate_initial_step
-            #global_step.load(current_step, session=sess)
+            #global_step.load(current_step, session=tflex.sess)
             if args.learning_rate_cos:
                 lr = tflex_sgdr.sgdr_decay_with_warmup(args.learning_rate, global_step,
                     warmup_steps=args.learning_rate_warmup, initial_period_steps=args.learning_rate_period, learning_rate_min=args.learning_rate_min)
             else:
                 lr = tflex.get_variable('learn_rate') or tf.get_variable('learn_rate', shape=(), dtype=tf.float32, trainable=False)
-                #lr.load(args.learning_rate, session=sess)
-    devices = sess.list_devices()
+                #lr.load(args.learning_rate, session=tflex.sess)
+    devices = tflex.sess.list_devices()
     device = None if args.device < 0 else devices[args.device].name
-    with sess.as_default(), tf.device(device):
-        output = model.shard(batch_size=args.batch_size, hparams=hparams, noise=args.noise, learning_rate=lr, optimizer=args.optimizer, only_train_transformer_layers=args.only_train_transformer_layers, colocate_gradients_with_ops=args.colocate_gradients, use_memory_saving_gradients=args.memory_saving_gradients, max_cores=args.max_cores, skip_cores=args.skip_cores)
+    with tflex.graph.as_default(), tf.device(device):
+        output = model.shard(batch_size=args.batch_size, hparams=hparams, noise=args.noise, learning_rate=lr, optimizer=args.optimizer, only_train_transformer_layers=args.only_train_transformer_layers, colocate_gradients_with_ops=args.colocate_gradients, use_memory_saving_gradients=args.memory_saving_gradients, max_cores=args.max_cores, skip_cores=args.skip_cores, devices=devices)
         shards = output['shards']
         feed = output['feed']
-        opt_loss = tf.reduce_mean([x.loss for x in shards])
-        #the_vars = [x.global_vars for x in shards]
-        the_vars = [x.train_vars for x in shards]
-        ops = []
-        N = len(the_vars[0])
-        M = len(the_vars)
-        #opt_apply = tf.tuple([x.fit for x in shards])
-        opt_apply = tf.group([x.opt_apply for x in shards])
-        #opt_apply = tf.group([shards[i].opt_apply for i in range(1,M)])
-        #opt_apply = tf.group([x.opt_apply for x in shards[1:]])
-        for j in range(N):
-          x0 = tf.reduce_mean([the_vars[i][j] for i in range(M)], axis=0)
-          #op1 = tf.group([tf.assign(the_vars[i][j], x0) for i in range(0,M)])
-          #x0 = tf.reduce_sum([(the_vars[i][j] - the_vars[0][j]) for i in range(M)], axis=0) / (M/2) + the_vars[0][j]
-          #x0 = tf.reduce_mean([(the_vars[i][j] - the_vars[0][j]) for i in range(M)], axis=0) * interp_rate + the_vars[0][j]
-          #x0 = tf.reduce_sum([(the_vars[i][j] - the_vars[0][j]) for i in range(1,M)], axis=0) / (M - 1) * interp_rate + the_vars[0][j]
-          #x0 = tf.reduce_mean([(the_vars[i][j] - the_vars[0][j]) for i in range(1,M)], axis=0) * interp_rate + the_vars[0][j]
-          op1 = tf.group([tf.assign(the_vars[i][j], x0) for i in range(0,M)])
-          ops.append(op1)
-        opt_gather = tf.group(ops)
-        opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards])
-        #opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards[1:]])
+        the = output['the']
+        opt_loss = the.opt_loss
+        opt_apply = the.opt_apply
+        opt_gather = the.opt_gather
+        opt_train = the.opt_train
 
         #val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
         val_context = tf.Variable(tf.zeros(shape=[args.val_batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="val_context")
@@ -283,13 +288,13 @@ def main():
         def update_lr(rate=None, step=None):
           if not args.learning_rate_cos:
             if step is None:
-              step = global_step.eval(session=sess)
+              step = global_step.eval(session=tflex.sess)
             if rate is None:
               rate = args.learning_rate
             if callable(rate):
               rate = rate(step)
-            lr.load(rate, session=sess)
-          return lr.eval(session=sess)
+            lr.load(rate, session=tflex.sess)
+          return lr.eval(session=tflex.sess)
 
         @tflex.register_command
         def set_learning_rate():
@@ -351,39 +356,79 @@ def main():
         summary_lr = tf.summary.scalar('learning_rate', lr)
         summaries = tf.summary.merge([summary_lr, summary_loss])
 
-        summary_log = tf.summary.FileWriter(
-            os.path.join(CHECKPOINT_DIR, args.run_name))
+        tflex.summary_log = None
+        
+        def reopen_log(run_name=None, target=None):
+          if run_name is None:
+            run_name = args.run_name
+          if target is None:
+            target = tflex.sess.target
+          if target is not None:
+            run_name = run_name + "_" + target
+            run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
+          return tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
+
+        tflex.summary_log = reopen_log()
+
+        tflex.old_sessions = []
+        tflex.old_logs = []
+        
+        def reopen(target):
+          with tf.device(None):
+            print(target, 'reopen: creating session')
+            sess = tflex.Session(target, config=tflex.sess.config, graph=tflex.graph, init_tpu=args.init_tpu)
+            print(target, 'reopen: ensuring TPU')
+            if args.init_tpu:
+              initialize_tpu(session=sess)
+            print(target, 'Initializing...')
+            #sess.run(tflex.init_op)
+            with sess.graph.as_default():
+              sess.run(tf.global_variables_initializer())
+            #with sess.as_default():
+            #  sess.ensure()
+            print(target, 'reopen: reopening log')
+            summary_log = reopen_log(target=target)
+            tflex.old_logs.append(tflex.summary_log)
+            tflex.old_sessions.append(tflex.sess)
+            tflex.summary_log = summary_log
+            tflex.sess = sess
+            reload_snapshot()
+            print(target, 'reopen: done!')
 
         if args.save_graph:
-            summary_log.add_graph(tf.get_default_graph())
+            tflex.summary_log.add_graph(tf.get_default_graph())
 
         train_vars = shards[0].train_vars
         all_vars = shards[0].all_vars
-        saver = tflex.Saver(
+        tflex.saver = tflex.Saver(
             var_list=all_vars,
             max_to_keep=args.max_to_keep,
             keep_checkpoint_every_n_hours=2,
             reshape=args.truncate_weights)
-        sess.run(tf.global_variables_initializer())
+        tflex.init_op = tf.global_variables_initializer()
+        tflex.sess.run(tflex.init_op)
 
-        if args.restore_from == 'latest':
-            ckpt = tflex.latest_checkpoint(
-                os.path.join(CHECKPOINT_DIR, args.run_name))
-            if ckpt is None:
-                # Get fresh GPT weights if new run.
-                ckpt = tflex.latest_checkpoint(
-                    os.path.join('models', args.model_name))
-        elif args.restore_from == 'fresh':
-            ckpt = tflex.latest_checkpoint(
-                os.path.join('models', args.model_name))
-        else:
-            ckpt = tflex.latest_checkpoint(args.restore_from)
-        print('Loading snapshot %s...' % ckpt)
-        t0 = time.time()
-        if not args.fresh_model:
-            saver.restore(sess, ckpt)
-        t1 = time.time()
-        print('Loaded in %f seconds' % (t1 - t0))
+        def reload_snapshot():
+          if args.restore_from == 'latest':
+              ckpt = tflex.latest_checkpoint(
+                  os.path.join(CHECKPOINT_DIR, args.run_name))
+              if ckpt is None:
+                  # Get fresh GPT weights if new run.
+                  ckpt = tflex.latest_checkpoint(
+                      os.path.join('models', args.model_name))
+          elif args.restore_from == 'fresh':
+              ckpt = tflex.latest_checkpoint(
+                  os.path.join('models', args.model_name))
+          else:
+              ckpt = tflex.latest_checkpoint(args.restore_from)
+          print('Loading snapshot %s...' % ckpt)
+          t0 = time.time()
+          if not args.fresh_model:
+              tflex.saver.restore(tflex.sess, ckpt)
+          t1 = time.time()
+          print('Loaded in %f seconds' % (t1 - t0))
+
+        reload_snapshot()
 
         def make_sampler(dataset, enc, seed, combine):
           if os.path.isdir(dataset) or dataset.endswith('.npz'):
@@ -421,8 +466,8 @@ def main():
                 os.path.join(CHECKPOINT_DIR, args.run_name,
                              'model-{}').format(counter))
             t0 = time.time()
-            saver.save(
-                sess,
+            tflex.saver.save(
+                tflex.sess,
                 os.path.join(CHECKPOINT_DIR, args.run_name, 'model'),
                 global_step=counter)
             t1 = time.time()
@@ -449,9 +494,9 @@ def main():
             context_tokens = data_sampler.sample(1)
             all_text = []
             index = 0
-            tflex.sample_context.load([data_sampler.sample(1) for _ in range(args.sample_batch_size)], session=sess)
+            tflex.sample_context.load([data_sampler.sample(1) for _ in range(args.sample_batch_size)], session=tflex.sess)
             while index < args.sample_num:
-                out = sess.run(tflex.tf_sample)
+                out = tflex.sess.run(tflex.tf_sample)
                 for i, tokens in enumerate(out): #range(min(args.sample_num - index, args.sample_batch_size)):
                     text = enc.decode(tokens)
                     text = '======== SAMPLE {} ========\n{}\n'.format(index + 1, text)
@@ -468,13 +513,13 @@ def main():
             print('Calculating validation loss...')
             losses = []
             for batch in tqdm.tqdm(val_batches):
-                val_context.load(batch, session=sess)
-                v_loss = sess.run(val_loss)
+                val_context.load(batch, session=tflex.sess)
+                v_loss = tflex.sess.run(val_loss)
                 losses.append(v_loss)
             v_val_loss = np.mean(losses)
-            v_summary = sess.run(val_loss_summary, feed_dict={val_loss: v_val_loss})
-            summary_log.add_summary(v_summary, counter)
-            summary_log.flush()
+            v_summary = tflex.sess.run(val_loss_summary, feed_dict={val_loss: v_val_loss})
+            tflex.summary_log.add_summary(v_summary, counter)
+            tflex.summary_log.flush()
             print(
                 '{stamp} [{counter} | {time:2.4f}] validation loss = {loss:2.4f}'
                 .format(
@@ -493,8 +538,9 @@ def main():
         def elapsed():
             return time.time() - start_time
 
-        def say(msg):
-            print('{stamp} [{counter} | {time:2.4f}] {msg}'.format(counter=counter, time=elapsed(), msg=msg, stamp=timestamp()))
+        def say(msg, *args):
+            print('{stamp} {target} [{counter} | {time:2.4f}] {msg} {args}'.format(counter=counter, target=(tflex.sess.target or '')[-16:], time=elapsed(), msg=msg, stamp=timestamp(),
+                args=('' if len(args) <= 0 else args)))
 
         def sample_batch():
             #return [data_sampler.sample(args.sample_ctx) for _ in range(args.batch_size)]
@@ -526,7 +572,7 @@ def main():
         tflex.run_load_context = True
         tflex.run_opt_apply = True
         tflex.run_opt_gather = True
-        tflex.run_summaries = True
+        tflex.run_summaries = False # True
 
         last_saved_time = elapsed()
         while True:
@@ -546,16 +592,16 @@ def main():
 
                 if args.accumulate_gradients > 1:
                     #say('Running opt_reset...')
-                    sess.run(opt_reset)
+                    tflex.sess.run(opt_reset)
                     for _ in range(args.accumulate_gradients):
                         batch = sample_batch()
                         print(repr(enc.decode(batch[0]))[0:150] + '...')
                         say('Running opt_compute...')
-                        #context.load(batch, session=sess)
-                        feed(batch, session=sess)
-                        sess.run(opt_compute)
+                        #context.load(batch, session=tflex.sess)
+                        feed(batch, session=tflex.sess)
+                        tflex.sess.run(opt_compute)
                     say('Running opt_apply...')
-                    (v_loss, v_summary) = sess.run((opt_apply, summaries))
+                    (v_loss, v_summary) = tflex.sess.run((opt_apply, summaries))
                 else:
                     if tflex.run_generate_batch:
                       say('Generating batch...')
@@ -565,37 +611,39 @@ def main():
                       batch = [[0]*args.sample_ctx for _ in range(args.batch_size)]
                     if tflex.run_load_context:
                       say('Loading context...')
-                      #context.load(batch, session=sess)
-                      feed(batch, session=sess)
+                      #context.load(batch, session=tflex.sess)
+                      feed(batch, session=tflex.sess)
                     if tflex.run_opt_apply:
                       say('Running opt_apply...')
-                      #(v_loss, v_summary) = sess.run(opt_train)
-                      v_losses = sess.run(opt_train)
+                      #(v_loss, v_summary) = tflex.sess.run(opt_train)
+                      v_losses = tflex.sess.run(opt_train)
                       v_loss = sum(v_losses) / len(v_losses)
                     else:
                       v_losses = [11.0]
                       v_loss = 11.0
                     if tflex.run_summaries:
                       say('Running summaries...')
-                      v_summary = sess.run(summaries, feed_dict={opt_loss: v_loss})
+                      v_summary = tflex.sess.run(summaries, feed_dict={opt_loss: v_loss})
                     else:
                       v_summary = None
                     print(v_losses, v_loss)
                     if tflex.run_opt_gather:
                       say('Running opt_gather...')
-                      sess.run(opt_gather, options=tflex.run_options)
+                      tflex.sess.run(opt_gather, options=tflex.run_options)
 
                 if v_summary is not None:
-                  summary_log.add_summary(v_summary, counter)
-                  summary_log.flush()
+                  say('Adding to summary log...')
+                  tflex.summary_log.add_summary(v_summary, counter)
+                  tflex.summary_log.flush()
 
                 avg_loss = (avg_loss[0] * 0.99 + v_loss,
                             avg_loss[1] * 0.99 + 1.0)
 
                 now = time.time()
-                print('{stamp} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.12f} step={step}'
+                print('{stamp} {target} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f} avg={avg:2.4f} rate={rate:0.12f} step={step}'
                     .format(
                         stamp=timestamp(),
+                        target=(tflex.sess.target or '')[-16:],
                         counter=counter,
                         time=now - start_time,
                         delta=now - prev_time,
@@ -608,27 +656,27 @@ def main():
 
                 counter += 1
                 current_step += 1
-                global_step.load(current_step, session=sess)
+                global_step.load(current_step, session=tflex.sess)
 
-                tflex.check_commands_with_args(
-                    session=sess,
-                    stamp=timestamp(),
-                    counter=counter,
-                    time=now - start_time,
-                    delta=now - prev_time,
-                    ops=args.batch_size / (now - prev_time),
-                    rate=v_rate,
-                    loss=v_loss,
-                    avg=avg_loss[0] / avg_loss[1],
-                    avg_loss=avg_loss,
-                    step=current_step,
-                    train_vars=train_vars,
-                    all_vars=all_vars,
-                    args=args,
-                    data_sampler=data_sampler,
-                    ckpt=ckpt,
-                    saver=saver,
-                    )
+                if not tflex.child_pid:
+                  tflex.check_commands_with_args(
+                      session=tflex.sess,
+                      stamp=timestamp(),
+                      counter=counter,
+                      time=now - start_time,
+                      delta=now - prev_time,
+                      ops=args.batch_size / (now - prev_time),
+                      rate=v_rate,
+                      loss=v_loss,
+                      avg=avg_loss[0] / avg_loss[1],
+                      avg_loss=avg_loss,
+                      step=current_step,
+                      train_vars=train_vars,
+                      all_vars=all_vars,
+                      args=args,
+                      data_sampler=data_sampler,
+                      saver=tflex.saver,
+                      )
                 if tflex.should_quit():
                   break
 
@@ -656,6 +704,28 @@ def main():
                         param_count += count
                     print('Total parameters:', param_count)
                     args.debug_print_trainable_vars = False
+
+                if not tflex.child_pid and len(args.fork) > 0:
+                  #if tflex.sess.target:
+                  #  args.fork = tflex.sess.target + ',' + args.fork
+                  while True:
+                    if len(args.fork) > 0:
+                      target, *more = args.fork.split(',')
+                      args.fork = ','.join(more)
+                      say('Forking', target)
+                      forked = os.fork()
+                      if forked <= 0:
+                        tflex.child_pid = 1
+                        say('Reopening', target)
+                        #import pdb
+                        #pdb.set_trace()
+                        reopen(target)
+                        break
+                    #tflex.check_commands()
+                    #if tflex.should_quit():
+                      #return
+                    #time.sleep(20.0)
+                    break
             except KeyboardInterrupt:
                 print('interrupted')
                 if args.save_on_ctrlc:
