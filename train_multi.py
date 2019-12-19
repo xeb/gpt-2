@@ -123,7 +123,7 @@ parser.add_argument('--allow_growth', default=False, action='store_true', help="
 parser.add_argument('--allow_soft_placement', default=False, action='store_true', help="Set config.gpu_options.allow_soft_placement = True")
 parser.add_argument('--disable_layout_optimizer', default=False, action='store_true', help="Set config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF")
 parser.add_argument('--colocate_gradients', default=False, action='store_true')
-parser.add_argument('--ungate_gradients', default=False, action='store_true', description="Use gate_gradients=tf.train.Optimizer.GATE_NONE")
+parser.add_argument('--ungate_gradients', default=False, action='store_true', help="Use gate_gradients=tf.train.Optimizer.GATE_NONE")
 parser.add_argument('--no_report_tensor_allocations_upon_oom', default=True, action='store_false')
 
 parser.add_argument('--debug_before_training', default=False, action='store_true', help="Drop into debugger before starting the training loop")
