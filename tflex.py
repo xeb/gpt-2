@@ -142,7 +142,7 @@ def eval(variable, session=None, timeout_in_ms=None):
 
 def grab_values(variables, reader, reshape=False):
   for variable in variables:
-    name = variable.name.split(':')[0]
+    name = variable_name(variable.name.split(':')[0])
     value = reader.get_tensor(name)
     value = truncate_value(variable, value, reshape=reshape)
     yield variable, value
