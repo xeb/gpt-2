@@ -526,12 +526,11 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
       reset_var = {}
       N = len(all_vars[0])
       M = len(all_vars)
-      with self.sess.graph.as_default():
-        for j in range(N):
-          reset_op = tf.group([tf.assign(all_vars[i][j], all_vars[0][j]) for i in range(1, M)])
-          reset_var[all_vars[0][j].name] = reset_op
-          reset_var[all_vars[0][j]] = reset_op
-          reset_ops.append(reset_op)
+      for j in range(N):
+        reset_op = tf.group([tf.assign(all_vars[i][j], all_vars[0][j]) for i in range(1, M)])
+        reset_var[all_vars[0][j].name] = reset_op
+        reset_var[all_vars[0][j]] = reset_op
+        reset_ops.append(reset_op)
       the.reset_var = reset_var
       the.reset_ops = reset_ops
       #opt_reset = tf.group(reset_ops)
