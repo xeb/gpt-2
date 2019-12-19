@@ -183,6 +183,7 @@ tflex.context_load_timeout = 10000
 tflex.ensure_on_init = True
 tflex.release_trainer_sema = True
 tflex.tpu_init_timeout = 10000
+tflex.summary_log_timeout = 10000
 tflex.use_global_data_sampler = False
 tflex.shuffle_cycles = True
 
@@ -360,16 +361,22 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       #parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
       #print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
 
+      shards = output['shards']
+      the = output['the']
+      opt_loss = the.opt_loss
+      #opt_apply = the.opt_apply
+      #opt_gather = the.opt_gather
+      #opt_train = the.opt_train
       #if args.memory_saving_gradients:
       #  opt_grads = memory_saving_gradients.gradients(loss, train_vars, colocate_gradients_with_ops=args.colocate_gradients)
       #else:
       #  opt_grads = gradients.gradients(loss, train_vars, colocate_gradients_with_device=args.colocate_gradients)
       #opt_grads = list(zip(opt_grads, train_vars))
       #opt_apply = opt.apply_gradients(opt_grads)
+      summary_loss = tf.summary.scalar('loss', opt_loss)
       #summary_loss = tf.summary.scalar('loss', loss)
-      #summary_perp = tf.summary.scalar('perplexity', tf.math.exp(loss))
+      summary_perp = tf.summary.scalar('perplexity', tf.math.exp(opt_loss))
       #global_vars = [v for v in tf.global_variables() if v.name.startswith(scope + '/')]
-      shards = output['shards']
       global_vars = shards[0].global_vars
       train_vars = shards[0].train_vars
       all_vars = shards[0].all_vars
@@ -379,8 +386,7 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summary_wd = tf.summary.scalar('weight_decay', wd)
-      #summaries = tf.summary.merge([summary_lr, summary_wd, summary_loss, summary_perp])
-      summaries = tf.summary.merge([summary_lr, summary_wd]) # TODO
+      summaries = tf.summary.merge([summary_lr, summary_wd, summary_loss, summary_perp])
       run_name = args.run_name + "_" + session.target
       run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
       self.summary_log = tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
@@ -514,22 +520,31 @@ def trainer_opt_apply(self):
   #(_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
   #v_perp = math.exp(v_loss)
   v_losses = self.sess.run(opt_train, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
+
   def thunk(_):
     self.say('Running opt_gather...')
     self.sess.run(opt_gather, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
   #tflex.parallelize([0], thunk)
   thunk(0)
-  v_summary = None
-  return v_losses, v_summary
+  return v_losses
 
 tflex.trainer_opt_apply = trainer_opt_apply
+
+def trainer_summary_log(self, v_loss):
+  the = self.output['the']
+  opt_loss = the.opt_loss
+  v_summary = tflex.sess.run(self.summaries, feed_dict={opt_loss: v_loss}, options=config_pb2.RunOptions(timeout_in_ms=tflex.summary_log_timeout))
+  return v_summary
+
+tflex.trainer_summary_log = trainer_summary_log
 
 def trainer_fit(self):
   tflex.trainer_ensure(self)
   v_rate, v_weight_decay = tflex.trainer_prepare(self)
   batch = tflex.trainer_generate(self)
   tflex.trainer_feed(self, batch)
-  v_losses, v_summary = tflex.trainer_opt_apply(self)
+  v_losses = tflex.trainer_opt_apply(self)
+  v_summary = tflex.trainer_summary_log(self)
   v_loss = sum(v_losses) / len(v_losses)
   v_perp = math.exp(v_loss)
   self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
