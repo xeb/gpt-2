@@ -264,7 +264,7 @@ def trainer_fork(existing, target):
       with tf.Session(target=target, graph=tf.Graph(), config=existing.sess.config) as sess:
         with sess.graph.as_default():
           sess.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=tflex.tpu_init_timeout))
-    self.summary_log = tflex.trainer_open_summary_log(self)
+    self.summary_log = tflex.trainer_open_summary_log(run_name=self.args.run_name, target=target)
     self.sess = session
     self.init = self.init_op
     self.thread = threading.Thread(target=tflex.trainer_toplevel, args=(self,))
@@ -274,13 +274,7 @@ def trainer_fork(existing, target):
 
 tflex.trainer_fork = trainer_fork
 
-def trainer_open_summary_log(self, run_name=None, target=None):
-  args = self.args
-  session = self.sess
-  if run_name is None:
-    run_name = args.run_name
-  if target is None:
-    target = session.target
+def trainer_open_summary_log(run_name, target):
   run_name = run_name + "_" + target
   run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
   return tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
@@ -403,7 +397,7 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       summary_wd = tf.summary.scalar('weight_decay', wd)
       summaries = tf.summary.merge([summary_lr, summary_wd, summary_loss, summary_perp])
       self.summaries = summaries
-      self.summary_log = tflex.trainer_open_summary_log(self, run_name=args.run_name, target=target)
+      self.summary_log = tflex.trainer_open_summary_log(run_name=args.run_name, target=target)
       #self.loss = loss
       #self.context = context
       self.output = output
@@ -533,7 +527,6 @@ def trainer_opt_apply(self):
   #(_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
   #v_perp = math.exp(v_loss)
   v_losses = self.sess.run(opt_train, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
-
   def thunk(_):
     self.say('Running opt_gather...')
     self.sess.run(opt_gather, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
