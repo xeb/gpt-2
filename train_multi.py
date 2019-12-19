@@ -264,13 +264,28 @@ def trainer_fork(existing, target):
       with tf.Session(target=target, graph=tf.Graph(), config=existing.sess.config) as sess:
         with sess.graph.as_default():
           sess.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=tflex.tpu_init_timeout))
+    self.summary_log = tflex.trainer_open_summary_log(self)
     self.sess = session
     self.init = self.init_op
     self.thread = threading.Thread(target=tflex.trainer_toplevel, args=(self,))
+    self.counter = self.current_step.value
     tflex.pinned_sessions.append([target, session]) # prevent GC'ing sessions, because the destructor seems to freeze.
     return self
 
 tflex.trainer_fork = trainer_fork
+
+def trainer_open_summary_log(self, run_name=None, target=None):
+  args = self.args
+  session = self.sess
+  if run_name is None:
+    run_name = args.run_name
+  if target is None:
+    target = session.target
+  run_name = run_name + "_" + target
+  run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
+  return tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
+
+tflex.trainer_open_summary_log = trainer_open_summary_log
 
 def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', timeout=tflex.session_timeout_in_ms, session=None, counter=None):
     self = TrainGPT2()
@@ -387,10 +402,8 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       summary_lr = tf.summary.scalar('learning_rate', lr)
       summary_wd = tf.summary.scalar('weight_decay', wd)
       summaries = tf.summary.merge([summary_lr, summary_wd, summary_loss, summary_perp])
-      run_name = args.run_name + "_" + session.target
-      run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
-      self.summary_log = tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
       self.summaries = summaries
+      self.summary_log = tflex.trainer_open_summary_log(self, run_name=args.run_name, target=target)
       #self.loss = loss
       #self.context = context
       self.output = output
@@ -533,7 +546,7 @@ tflex.trainer_opt_apply = trainer_opt_apply
 def trainer_summary_log(self, v_loss):
   the = self.output['the']
   opt_loss = the.opt_loss
-  v_summary = tflex.sess.run(self.summaries, feed_dict={opt_loss: v_loss}, options=config_pb2.RunOptions(timeout_in_ms=tflex.summary_log_timeout))
+  v_summary = self.sess.run(self.summaries, feed_dict={opt_loss: v_loss}, options=config_pb2.RunOptions(timeout_in_ms=tflex.summary_log_timeout))
   return v_summary
 
 tflex.trainer_summary_log = trainer_summary_log
@@ -544,8 +557,8 @@ def trainer_fit(self):
   batch = tflex.trainer_generate(self)
   tflex.trainer_feed(self, batch)
   v_losses = tflex.trainer_opt_apply(self)
-  v_summary = tflex.trainer_summary_log(self)
   v_loss = sum(v_losses) / len(v_losses)
+  v_summary = tflex.trainer_summary_log(self, v_loss)
   v_perp = math.exp(v_loss)
   self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
                    self.avg_loss[1] * 0.99 + 1.0]
@@ -652,6 +665,8 @@ def load_trainer(trainer, ckpt=None, reset_stats=True):
   print('Loading snapshot %s...' % ckpt)
   t0 = time.time()
   saver.restore(sess, ckpt)
+  print('Broadcasting variables...')
+  tflex.trainer_reset_variables(trainer, trainer.all_vars)
   t1 = time.time()
   print('Loaded in %f seconds' % (t1 - t0))
   if reset_stats:
@@ -846,7 +861,7 @@ def trainer_reset_variables(self, variables, timeout_in_ms=tflex.write_deadline)
   session = self.sess
   the = self.output['the']
   ops = [the.reset_var[v.name] for v in variables]
-  sess.run(ops, options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms))
+  session.run(ops, options=config_pb2.RunOptions(timeout_in_ms=timeout_in_ms))
 
 tflex.trainer_reset_variables = trainer_reset_variables
 
