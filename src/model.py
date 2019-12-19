@@ -531,8 +531,6 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
         reset_var[all_vars[0][j].name] = reset_op
         reset_var[all_vars[0][j]] = reset_op
         reset_ops.append(reset_op)
-      the.reset_var = reset_var
-      the.reset_ops = reset_ops
       #opt_reset = tf.group(reset_ops)
       #def init():
       #  init_op = tf.variables_initializer(shards[0].global_vars)
