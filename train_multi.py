@@ -660,7 +660,7 @@ def load_trainer(trainer, ckpt=None, reset_stats=True):
   t0 = time.time()
   saver.restore(sess, ckpt)
   print('Broadcasting variables...')
-  tflex.trainer_reset_variables(trainer, trainer.all_vars)
+  tflex.trainer_reset_variables(trainer, trainer.all_vars, timeout_in_ms=5*60000)
   t1 = time.time()
   print('Loaded in %f seconds' % (t1 - t0))
   if reset_stats:
@@ -838,8 +838,9 @@ def parallelize(xs, thunk, *args):
 
 #tflex.read_deadline = 20000
 #tflex.write_deadline = 20000
-tflex.read_deadline = 30000
-tflex.write_deadline = 30000
+tflex.read_deadline = 60000
+tflex.write_deadline = 60000
+tflex.reset_deadline = 120000
 
 def assign_values(variables, values, session=None, timeout_in_ms=tflex.write_deadline):
   session = session or tf.get_default_session()
@@ -851,7 +852,7 @@ def assign_values(variables, values, session=None, timeout_in_ms=tflex.write_dea
 
 tflex.assign_values = assign_values
 
-def trainer_reset_variables(self, variables, timeout_in_ms=tflex.write_deadline):
+def trainer_reset_variables(self, variables, timeout_in_ms=tflex.reset_deadline):
   session = self.sess
   the = self.output['the']
   ops = [the.reset_var[v.name] for v in variables]
