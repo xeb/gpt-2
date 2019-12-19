@@ -728,43 +728,43 @@ tflex.print_trainers = print_trainers
 
 @tflex.register_command
 def learning_rate_increase_2x():
-  args.learning_rate *= 2
-  print('learning rate now %2.9f' % args.learning_rate)
+  tflex.args.learning_rate *= 2
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
 
 tflex.learning_rate_increase_2x = learning_rate_increase_2x
 
 @tflex.register_command
 def learning_rate_decrease_2x():
-  args.learning_rate /= 2
-  print('learning rate now %2.9f' % args.learning_rate)
+  tflex.args.learning_rate /= 2
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
 
 tflex.learning_rate_decrease_2x = learning_rate_decrease_2x
 
 @tflex.register_command
 def learning_rate_increase_5x():
-  args.learning_rate *= 5
-  print('learning rate now %2.9f' % args.learning_rate)
+  tflex.args.learning_rate *= 5
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
 
 tflex.learning_rate_increase_5x = learning_rate_increase_5x
 
 @tflex.register_command
 def learning_rate_decrease_5x():
-  args.learning_rate /= 5
-  print('learning rate now %2.9f' % args.learning_rate)
+  tflex.args.learning_rate /= 5
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
 
 tflex.learning_rate_decrease_5x = learning_rate_decrease_5x
 
 @tflex.register_command
 def learning_rate_increase_10x():
-  args.learning_rate *= 10
-  print('learning rate now %2.9f' % args.learning_rate)
+  tflex.args.learning_rate *= 10
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
 
 tflex.learning_rate_increase_10x = learning_rate_increase_10x
 
 @tflex.register_command
 def learning_rate_decrease_10x():
-  args.learning_rate /= 10
-  print('learning rate now %2.9f' % args.learning_rate)
+  tflex.args.learning_rate /= 10
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
 
 tflex.learning_rate_decrease_10x = learning_rate_decrease_10x
 
@@ -941,6 +941,7 @@ tflex.update_trainers = update_trainers
 
 def main():
     args = parser.parse_args()
+    tflex.args = args
     enc = encoder.get_encoder(args.model_name)
     hparams = model.default_hparams()
     hparams.res_dropout = args.dropout
