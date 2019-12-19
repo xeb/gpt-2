@@ -295,7 +295,7 @@ def bfloat16context(hparams):
   else:
     return nullcontext()
 
-def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, global_step=None, graph=None, scope='model', skip_cores=4, max_cores=4, length=None, sample_ctx=None, encoder=None, temperature=1, top_k=0, top_p=0.0, *args, **kws):
+def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, global_step=None, graph=None, scope='model', skip_cores=4, max_cores=4, length=None, sample_ctx=None, encoder=None, temperature=1, top_k=0, top_p=0.0, devices=None, *args, **kws):
     if graph is None:
         graph = tf.get_default_graph()
     if length is None:
@@ -309,7 +309,11 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
     #results['logits'] = []
     with graph.as_default():
       #batch_size, *rest = shape_list(X)
-      cores = get_cores()[skip_cores:]
+      if devices is None:
+        devices = get_cores()
+      else:
+        devices = devices[2:2+8]
+      cores = devices[skip_cores:]
       num_cores = len(cores)
       if max_cores is not None:
         if num_cores > max_cores:
@@ -447,6 +451,7 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
             r.opt = opt
             r.opt_apply = opt_apply
             r.fit = fit
+          r.global_vars = global_vars
           r.all_vars = all_vars
           r.train_vars = train_vars
           r.global_vars = global_vars
@@ -469,17 +474,19 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
         parts = tflex.tuples(j, batch)
         assert(batch_size % num_cores == 0)
         shards = results['shards']
-        def load(i):
+        def load(i, verbose=False):
           context = inputs[i]
           tokens = parts[i]
           #r[context] = tokens
           shard = shards[i]
           with tf.device(shard.device):
-            print('Loading context', i)
+            if verbose:
+              print('Loading context', i)
             #session.run(shard.feed_op, feed_dict={shard.context_set: tokens}, options=options)
             tflex.load(shard.context, tokens, session=session, timeout_in_ms=15000)
             #session.run(shard.feed_op, feed_dict={shard.context_set: tokens}, options=options)
-            print('Loaded context', i)
+            if verbose:
+              print('Loaded context', i)
         for thread in tflex.parallelize([i for i in range(len(inputs))], load):
           thread.join()
         #for i, context in enumerate(inputs):
@@ -494,4 +501,49 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
         #    print('Loaded')
         return r
       results['feed'] = get_feed_dict
+      shards = results['shards']
+      opt_loss = tf.reduce_mean([x.loss for x in shards])
+      #the_vars = [x.global_vars for x in shards]
+      the_vars = [x.train_vars for x in shards]
+      ops = []
+      reset_ops = []
+      reset_var = {}
+      N = len(the_vars[0])
+      M = len(the_vars)
+      #opt_apply = tf.tuple([x.fit for x in shards])
+      opt_apply = tf.group([x.opt_apply for x in shards])
+      #opt_apply = tf.group([shards[i].opt_apply for i in range(1,M)])
+      #opt_apply = tf.group([x.opt_apply for x in shards[1:]])
+      for j in range(N):
+        x0 = tf.reduce_mean([the_vars[i][j] for i in range(M)], axis=0)
+        reset_op = tf.group([tf.assign(the_vars[i][j], the_vars[0][j]) for i in range(1, M)])
+        reset_var[the_vars[0][j].name] = reset_op
+        reset_ops.append(reset_op)
+        #op1 = tf.group([tf.assign(the_vars[i][j], x0) for i in range(0,M)])
+        #x0 = tf.reduce_sum([(the_vars[i][j] - the_vars[0][j]) for i in range(M)], axis=0) / (M/2) + the_vars[0][j]
+        #x0 = tf.reduce_mean([(the_vars[i][j] - the_vars[0][j]) for i in range(M)], axis=0) * interp_rate + the_vars[0][j]
+        #x0 = tf.reduce_sum([(the_vars[i][j] - the_vars[0][j]) for i in range(1,M)], axis=0) / (M - 1) * interp_rate + the_vars[0][j]
+        #x0 = tf.reduce_mean([(the_vars[i][j] - the_vars[0][j]) for i in range(1,M)], axis=0) * interp_rate + the_vars[0][j]
+        op1 = tf.group([tf.assign(the_vars[i][j], x0) for i in range(0,M)])
+        ops.append(op1)
+      #opt_reset = tf.group(reset_ops)
+      #def init():
+      #  init_op = tf.variables_initializer(shards[0].global_vars)
+      #  with tf.control_dependencies([init_op]):
+      #    return tf.group(reset_ops)
+      #opt_init = init()
+      opt_init = tf.global_variables_initializer()
+      opt_gather = tf.group(ops)
+      opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards])
+      #opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards[1:]])
+      the = tflex.Namespace()
+      results['the'] = the
+      the.opt_loss = opt_loss
+      the.opt_apply = opt_apply
+      the.opt_gather = opt_gather
+      the.opt_train = opt_train
+      the.reset_ops = reset_ops
+      the.reset_var = reset_var
+      the.opt_init = opt_init
+      the.vars = the_vars
       return results

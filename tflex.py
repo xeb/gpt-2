@@ -59,8 +59,11 @@ def get_session_target(target='auto'):
 
 class Session(tf.Session):
   def __init__(self, target='auto', graph=None, config=None, init_tpu=False):
-    super().__init__(get_session_target(target), graph=graph, config=config)
+    target = get_session_target(target)
+    super().__init__(target, graph=graph, config=config)
     self.init_tpu=init_tpu
+    self.target = target
+    self.config = config
 
   def ensure(self):
     if self.init_tpu:
