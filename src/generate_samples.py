@@ -82,17 +82,21 @@ def interact_model(
           else:
             raw_text = prompt
           #print(repr(raw_text))
-          context_tokens = enc.encode(raw_text)
+          context_tokens = enc.encode(raw_text) if len(raw_text) > 0 else [enc.encoder["<|endoftext|>"]]
           total_tokens = context_tokens[:]
           while len(context_tokens) > length - step - 1:
             context_tokens = context_tokens[1:]
+          sys.stdout.write(enc.decode(context_tokens))
+          sys.stdout.flush()
           while True:
             for text, tokens in generate_result(context_tokens=context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
-              print('')
+              sys.stdout.write(text)
+              sys.stdout.flush()
+              #print('')
               context_tokens.extend(tokens)
               while len(context_tokens) > length - step - 1:
                 context_tokens = context_tokens[1:]
-              print(enc.decode(context_tokens))
+              #print(enc.decode(context_tokens))
 
 def generate_result(context_tokens, enc, output, context, nsamples=1, batch_size=1, sess=tf.get_default_session()):
     for _ in range(nsamples // batch_size):
