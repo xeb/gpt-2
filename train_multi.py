@@ -511,7 +511,6 @@ def trainer_ensure(self):
     args = self.args
     self.say('Initializing...')
     self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=tflex.initialize_timeout))
-    self.init = None
     if not args.fresh_model:
       tflex.load_trainer(self)
     self.say('Broadcasting variables...')
@@ -520,9 +519,11 @@ def trainer_ensure(self):
     if not tflex.trainer_warmup(self):
       self.say('Warmup failed!')
       self.dead = True
+      self.init = None
       return False
     else:
       self.say('Initialized.')
+      self.init = None
   if not self.thread.is_alive():
     self.thread.start()
   return True
