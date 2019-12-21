@@ -250,8 +250,8 @@ class TrainGPT2(object):
   def ensure(self):
     return tflex.trainer_ensure(self)
 
-  def fit(self):
-    return tflex.trainer_fit(self)
+  def fit(self, *args, **kws):
+    return tflex.trainer_fit(self, *args, **kws)
 
   def variables(self, index):
     return tflex.trainer_variables(self, index)
@@ -544,7 +544,7 @@ def trainer_warmup(self, retry_count=None, verbose=False):
     for retry in range(retry_count):
       success = False
       try:
-        tflex.trainer_fit(self)
+        tflex.trainer_fit(self, ignore=True)
         success = True
         break
       except DeadlineExceededError:
@@ -649,11 +649,14 @@ def trainer_summary_log(self, v_loss):
 
 tflex.trainer_summary_log = trainer_summary_log
 
-def trainer_fit(self):
+def trainer_fit(self, ignore=False):
   v_rate, v_weight_decay = tflex.trainer_prepare(self)
   v_losses = tflex.trainer_opt_apply(self)
   v_loss = sum(v_losses) / len(v_losses)
-  v_summary = tflex.trainer_summary_log(self, v_loss)
+  if ignore:
+    v_summary = None
+  else:
+    v_summary = tflex.trainer_summary_log(self, v_loss)
   v_perp = math.exp(v_loss)
   self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
                    self.avg_loss[1] * 0.99 + 1.0]
@@ -681,7 +684,8 @@ def trainer_fit(self):
   if v_summary is not None:
     self.summary_log.add_summary(v_summary, self.counter)
     self.summary_log.flush()
-  self.counter = self.current_step.incr()
+  if not ignore:
+    self.counter = self.current_step.incr()
   self.start_count = self.counter
   #load_lightweight(self.global_step, self.counter, session=self.sess)
   return v_loss
