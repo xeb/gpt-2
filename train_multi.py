@@ -329,7 +329,6 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
           print('Initializing TPU...', session.target)
           sess.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=tflex.tpu_init_timeout))
         devices = sess.list_devices()
-
     #devices = tflex.get_cores(session=session)
     device = None
     if self.core >= 0:
@@ -377,13 +376,10 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       #  opt = tflex_optimizers.AdafactorWOptimizer(learning_rate=lr, use_locking=use_locking, weight_decay=wd)
       #else:
       #  exit('Bad optimizer:', args.optimizer)
-
       #all_vars = [v for v in tf.trainable_variables() if v.name.startswith(scope + '/')]
       #train_vars = [v for v in all_vars if '/h' in v.name or '/ln_f' in v.name] if args.only_train_transformer_layers else all_vars
-
       #parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
       #print("This model is using %d parameters (%.2fM)" % (parameter_count, parameter_count/(1024.0*1024.0)))
-
       shards = output['shards']
       the = output['the']
       opt_loss = the.opt_loss
@@ -406,7 +402,6 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       fetch_global_vars = [list(tflex.split_by_params(shard.global_vars)) for shard in shards]
       fetch_train_vars = [list(tflex.split_by_params(shard.train_vars)) for shard in shards]
       #fetch_vars = list(tflex.split_by_params(all_vars))
-
       summary_lr = tf.summary.scalar('learning_rate', lr)
       #summary_wd = tf.summary.scalar('weight_decay', wd)
       #summaries = tf.summary.merge([summary_lr, summary_wd, summary_loss, summary_perp])
@@ -619,7 +614,9 @@ def trainer_opt_apply(self, batch=None):
   #(_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
   #v_perp = math.exp(v_loss)
   losses = self.sess.run(opt_train, options=config_pb2.RunOptions(timeout_in_ms=tflex.train_timeout))
+  v_losses = losses
   def thunk(_):
+    nonlocal v_losses
     #self.say('Running opt_gather...')
     #self.sess.run(opt_gather, options=config_pb2.RunOptions(timeout_in_ms=tflex.gather_timeout))
     #self.say('Running opt_broadcast...')
