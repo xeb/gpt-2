@@ -785,7 +785,8 @@ def load_trainer(trainer, ckpt=None, reset_stats=True):
       ckpt = tflex.latest_checkpoint(args.restore_from)
   print('Loading snapshot %s...' % ckpt)
   t0 = time.time()
-  saver.restore(sess, ckpt)
+  with tflex.trainers_load_sema:
+    saver.restore(sess, ckpt)
   t1 = time.time()
   print('Loaded in %f seconds' % (t1 - t0))
   if reset_stats:
@@ -1140,7 +1141,8 @@ def main():
     tflex.pending_trainers = []
     tflex.pinned_trainers = []
     tflex.trainers_sema = threading.BoundedSemaphore(value=3)
-    tflex.trainers_init_sema = threading.BoundedSemaphore(value=30)
+    tflex.trainers_init_sema = threading.BoundedSemaphore(value=40)
+    tflex.trainers_load_sema = threading.BoundedSemaphore(value=4)
     tflex.trainers_lock = threading.RLock()
     tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, sampler=tflex.data_sampler, enc=enc, target=tflex.targets[0], counter=traincounter)
     #tflex.trainer.ensure()
