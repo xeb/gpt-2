@@ -18,8 +18,8 @@ def interact_model(
     model_name='117M',
     seed=None,
     nsamples=1,
-    length=1,
-    window=64,
+    step=1,
+    length=64,
     prompt="<|endoftext>",
     stop="<|endoftext|>",
     temperature=1,
@@ -32,8 +32,8 @@ def interact_model(
     :seed=None : Integer seed for random number generators, fix seed to reproduce
      results
     :nsamples=1 : Number of samples to return total
-    :length=1 : Number of tokens to generate at a time
-    :window=64 : Window size; use 1024 for maximum size per sample
+    :step=1 : Number of tokens to generate at a time
+    :length=64 : Window size; use 1024 for maximum size per sample
     :prompt="<|endoftext|>" : Prompt to start with
     :stop="<|endoftext|>" : Text to end at
     :temperature=1 : Float value controlling randomness in boltzmann
@@ -55,17 +55,17 @@ def interact_model(
     with open(os.path.join('models', model_name, 'hparams.json')) as f:
         hparams.override_from_dict(json.load(f))
 
-    if window > hparams.n_ctx:
-        raise ValueError("Window can't be largeer than n_ctx: %s" % hparams.n_ctx)
-    if length > window:
-        raise ValueError("Can't get samples longer than window size: %s" % window)
+    if length > hparams.n_ctx:
+        raise ValueError("Length can't be largeer than n_ctx: %s" % hparams.n_ctx)
+    if step > length:
+        raise ValueError("Can't get samples longer than length: %s" % length)
 
     with tf.Session(graph=tf.Graph()) as sess:
         context = tf.placeholder(tf.int32, [batch_size, None])
         np.random.seed(seed)
         tf.set_random_seed(seed)
         output = sample.sample_sequence(
-            hparams=hparams, length=length,
+            hparams=hparams, length=step,
             context=context,
             batch_size=batch_size,
             temperature=temperature, top_k=top_k, top_p=top_p
@@ -84,13 +84,13 @@ def interact_model(
           #print(repr(raw_text))
           context_tokens = enc.encode(raw_text)
           total_tokens = context_tokens[:]
-          while len(context_tokens) > window - length - 1:
+          while len(context_tokens) > length - step - 1:
             context_tokens = context_tokens[1:]
           while True:
             for text, tokens in generate_result(context_tokens=context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
               print('')
               context_tokens.extend(tokens)
-              while len(context_tokens) > window - length - 1:
+              while len(context_tokens) > length - step - 1:
                 context_tokens = context_tokens[1:]
               print(enc.decode(context_tokens))
 
