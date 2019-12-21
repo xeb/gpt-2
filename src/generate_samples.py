@@ -21,14 +21,18 @@ def clear_output(wait=False):
   else:
       print("\033c", end="")
 
+def is_ascii(s):
+    return all(ord(c) < 128 for c in s)
+
 def interact_model(
     model_name='117M',
     seed=None,
     nsamples=1,
     step=1,
     length=64,
-    prompt="<|endoftext>",
-    stop="<|endoftext|>",
+    prompt="",
+    clear="<|endoftext|>",
+    maxlen=4096,
     temperature=1,
     top_k=0,
     top_p=0
@@ -41,8 +45,10 @@ def interact_model(
     :nsamples=1 : Number of samples to return total
     :step=1 : Number of tokens to generate at a time
     :length=64 : Window size; use 1024 for maximum size per sample
-    :prompt="<|endoftext|>" : Prompt to start with
-    :stop="<|endoftext|>" : Text to end at
+    :prompt="" : Prompt to start with. The default of "" prompts with an <|endoftext|> token.
+    :clear="<|endoftext|>" : If this is encountered, clear the context window.
+    :maxlen=4096 : if this many tokens are generated without
+     encountering --clear, then print it and clear the context window.
     :temperature=1 : Float value controlling randomness in boltzmann
      distribution. Lower temperature results in less random completions. As the
      temperature approaches zero, the model will become deterministic and
@@ -83,31 +89,47 @@ def interact_model(
         saver.restore(sess, ckpt)
 
         while True:
-          if os.path.isfile(prompt):
+          try:
             with open(prompt) as f:
               raw_text = f.read()
-          else:
+          except:
             raw_text = prompt
           #print(repr(raw_text))
           context_tokens = enc.encode(raw_text) if len(raw_text) > 0 else [enc.encoder["<|endoftext|>"]]
-          total_tokens = context_tokens[:]
           while len(context_tokens) > length - step - 1:
             context_tokens = context_tokens[1:]
           first = True
+          backlog = []
+          backlog_count = 0
+          context_text = ""
+          context_count = 0
           while True:
-            for text, tokens in generate_result(context_tokens=context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
+            for tokens in generate_result(context_tokens=context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
               if first:
                 clear_output(wait=True)
                 sys.stdout.write(enc.decode(context_tokens))
                 sys.stdout.flush()
                 first = False
-              sys.stdout.write(text)
-              sys.stdout.flush()
-              #print('')
+              backlog.extend(tokens)
+              backlog_count += 1
+              if is_ascii(enc.decode([backlog[-1]])) or backlog_count > 16:
+                text = enc.decode(backlog)
+                result, *rest = text.split(clear)
+                sys.stdout.write(result)
+                sys.stdout.flush()
+                context_text += text
+                context_count += len(backlog)
+                if context_count > maxlen or clear in context_text:
+                  context_text = ""
+                  context_count = 0
+                  context_tokens = []
+                  sys.stdout.write(clear)
+                  sys.stdout.flush()
+                backlog = []
+                backlog_count = 0
               context_tokens.extend(tokens)
               while len(context_tokens) > length - step - 1:
                 context_tokens = context_tokens[1:]
-              #print(enc.decode(context_tokens))
 
 def generate_result(context_tokens, enc, output, context, nsamples=1, batch_size=1, sess=tf.get_default_session()):
     for _ in range(nsamples // batch_size):
@@ -115,8 +137,7 @@ def generate_result(context_tokens, enc, output, context, nsamples=1, batch_size
             context: [context_tokens for _ in range(batch_size)]
         })[:, len(context_tokens):]
         for i in range(batch_size):
-            text = enc.decode(out[i])
-            yield text, out[i]
+            yield out[i]
 
 if __name__ == '__main__':
     fire.Fire(interact_model)
