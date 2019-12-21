@@ -537,14 +537,20 @@ def trainer_warmup(self, retry_count=None, verbose=False):
   if retry_count is None:
     retry_count = tflex.retry_count
   # do a training step.
-  self.say('Warmup: training step...')
-  for retry in range(retry_count):
-    success = False
-    try:
-      tflex.trainer_fit(self)
-      success = True
-    except DeadlineExceededError:
-      pass
+  i = 0
+  while i < 5:
+    i += 1
+    self.say('Warmup: training step %d...' % i)
+    for retry in range(retry_count):
+      success = False
+      try:
+        tflex.trainer_fit(self)
+        success = True
+        break
+      except DeadlineExceededError:
+        pass
+      if not success:
+        return False
   if tflex.averaging:
     self.say('Warmup: averaging...')
     for index in tqdm.tqdm(range(slices)) if verbose else range(slices):
