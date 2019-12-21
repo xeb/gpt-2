@@ -1022,11 +1022,11 @@ def main():
     #if not tflex.trainer.thread.is_alive():
     #  tflex.trainer.thread.start()
     random.shuffle(tflex.targets)
-    def add_trainer(target, delaying=True):
+    def add_trainer(target, delaying=10.0):
       #released = False
       try:
-        #if delaying:
-        #  time.sleep(random.random() * 60)
+        if delaying > 0.0:
+          time.sleep(random.random() * delaying)
         with tflex.trainers_lock:
           for existing in tflex.pending_trainers:
             if existing == target:
