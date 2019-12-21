@@ -618,15 +618,15 @@ def trainer_opt_apply(self, batch=None):
   opt_train = the.opt_train
   #(_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
   #v_perp = math.exp(v_loss)
-  v_losses = self.sess.run(opt_train, options=config_pb2.RunOptions(timeout_in_ms=tflex.train_timeout))
+  losses = self.sess.run(opt_train, options=config_pb2.RunOptions(timeout_in_ms=tflex.train_timeout))
   def thunk(_):
     #self.say('Running opt_gather...')
     #self.sess.run(opt_gather, options=config_pb2.RunOptions(timeout_in_ms=tflex.gather_timeout))
     #self.say('Running opt_broadcast...')
     #self.sess.run(opt_broadcast, options=config_pb2.RunOptions(timeout_in_ms=tflex.broadcast_timeout))
     self.say('Running opt_losses...')
-    losses = self.sess.run(opt_losses, options=config_pb2.RunOptions(timeout_in_ms=tflex.loss_timeout))
-    self.say('Loss deltas: %s' % (repr([x-y for x, y in zip(losses, v_losses)])))
+    v_losses = self.sess.run(opt_losses, options=config_pb2.RunOptions(timeout_in_ms=tflex.loss_timeout))
+    self.say('Loss deltas: %s' % (repr([x-y for x, y in zip(v_losses, losses)])))
     #batch_size = len(batch)
     #num_cores = len(shards)
     #assert(len(batch) % num_cores == 0)
