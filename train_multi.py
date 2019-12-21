@@ -123,6 +123,7 @@ parser.add_argument('--allow_growth', default=False, action='store_true', help="
 parser.add_argument('--allow_soft_placement', default=False, action='store_true', help="Set config.gpu_options.allow_soft_placement = True")
 parser.add_argument('--disable_layout_optimizer', default=False, action='store_true', help="Set config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF")
 parser.add_argument('--colocate_gradients', default=False, action='store_true')
+parser.add_argument('--colocate_sum', default=False, action='store_true')
 parser.add_argument('--ungate_gradients', default=False, action='store_true', help="Use gate_gradients=tf.train.Optimizer.GATE_NONE")
 parser.add_argument('--no_report_tensor_allocations_upon_oom', default=True, action='store_false')
 
@@ -355,7 +356,7 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       #    labels=context[:, 1:], logits=output['logits'][:, :-1]))
       #if hparams.dtype == tf.bfloat16:
       #  loss = tf.cast(loss, tf.float32)
-      output = model.shard(batch_size=args.batch_size, hparams=hparams, noise=args.noise, learning_rate=lr, optimizer=args.optimizer, only_train_transformer_layers=args.only_train_transformer_layers, colocate_gradients_with_ops=args.colocate_gradients, use_memory_saving_gradients=args.memory_saving_gradients, ungate_gradients=args.ungate_gradients,max_cores=args.max_cores, skip_cores=args.skip_cores, devices=devices)
+      output = model.shard(batch_size=args.batch_size, hparams=hparams, noise=args.noise, learning_rate=lr, optimizer=args.optimizer, only_train_transformer_layers=args.only_train_transformer_layers, colocate_gradients_with_ops=args.colocate_gradients, colocate_sum=args.colocate_sum, use_memory_saving_gradients=args.memory_saving_gradients, ungate_gradients=args.ungate_gradients,max_cores=args.max_cores, skip_cores=args.skip_cores, devices=devices)
       #use_locking=False
       #if args.optimizer == 'adam':
       #  opt = tf.train.AdamOptimizer(learning_rate=lr, use_locking=use_locking)
@@ -512,7 +513,7 @@ def trainer_ensure(self):
     self.init = None
     if not args.fresh_model:
       tflex.load_trainer(self)
-    print('Broadcasting variables...')
+    self.say('Broadcasting variables...')
     tflex.trainer_reset_variables(self, self.all_vars, timeout_in_ms=5*60000)
     self.say('Warming up...')
     if not tflex.trainer_warmup(self):
@@ -529,7 +530,7 @@ tflex.trainer_ensure = trainer_ensure
 
 tflex.retry_count = 4
 
-def trainer_warmup(self, retry_count=None, verbose=True):
+def trainer_warmup(self, retry_count=None, verbose=False):
   slices = tflex.trainer_slices(self)
   if retry_count is None:
     retry_count = tflex.retry_count

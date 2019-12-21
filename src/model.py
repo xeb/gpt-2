@@ -301,10 +301,27 @@ def shape_to_list(shape):
     """Convert a Tensorflow shape to a list of ints."""
     return [dim.value for dim in shape]
 
+def is_tf_expression(x):
+    """Check whether the input is a valid Tensorflow expression, i.e., Tensorflow Tensor, Variable, or Operation."""
+    return isinstance(x, (tf.Tensor, tf.Variable, tf.Operation))
+
+def absolute_name_scope(scope):
+    """Forcefully enter the specified name scope, ignoring any surrounding scopes."""
+    return tf.name_scope(scope + "/")
+
+
+def absolute_variable_scope(scope, **kwargs):
+    """Forcefully enter the specified variable scope, ignoring any surrounding scopes."""
+    return tf.variable_scope(tf.VariableScope(name=scope, **kwargs), auxiliary_name_scope=False)
+
+
 def all_sum_plain(g, colocate=True, *args, **kws):
   r = []
   for i in range(len(g)):
-    with tf_ops.colocate_with(g[i]):
+    if colocate:
+      with tf_ops.colocate_with(g[i]):
+        r.append(tf.add_n(g))
+    else:
       r.append(tf.add_n(g))
   return r
 
@@ -341,7 +358,36 @@ def all_sum(cores, g, colocate=True, *args, **kws):
   else:
     return all_sum_cpu(g, *args, **kws)
 
-def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, use_memory_saving_gradients=False, ungate_gradients=False, global_step=None, graph=None, scope='model', skip_cores=4, max_cores=4, length=None, sample_ctx=None, encoder=None, temperature=1, top_k=0, top_p=0.0, devices=None, *args, **kws):
+def init_uninitialized_vars(target_vars = None, run = lambda ops: [False] * len(ops)):
+    """Initialize all tf.Variables that have not already been initialized.
+
+    Equivalent to the following, but more efficient and does not bloat the tf graph:
+    tf.variables_initializer(tf.report_uninitialized_variables()).run()
+    """
+    #assert_tf_initialized()
+    if target_vars is None:
+        target_vars = tf.global_variables()
+
+    test_vars = []
+    test_ops = []
+
+    with tf.control_dependencies(None):  # ignore surrounding control_dependencies
+        for var in target_vars:
+            assert is_tf_expression(var)
+
+            try:
+                tf.get_default_graph().get_tensor_by_name(var.name.replace(":0", "/IsVariableInitialized:0"))
+            except KeyError:
+                # Op does not exist => variable may be uninitialized.
+                test_vars.append(var)
+
+                with absolute_name_scope(var.name.split(":")[0]):
+                    test_ops.append(tf.is_variable_initialized(var))
+
+    init_vars = [var for var, inited in zip(test_vars, run(test_ops)) if not inited]
+    return [var.initializer for var in init_vars]
+
+def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0, only_train_transformer_layers=False, colocate_gradients_with_ops=False, colocate_sum=False, use_memory_saving_gradients=False, ungate_gradients=False, global_step=None, graph=None, scope='model', skip_cores=4, max_cores=4, length=None, sample_ctx=None, encoder=None, temperature=1, top_k=0, top_p=0.0, devices=None, *args, **kws):
     if graph is None:
         graph = tf.get_default_graph()
     if length is None:
@@ -550,7 +596,7 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
                   g = [dev_grads[dev][var_idx][0] for dev in cores]
 
                   if np.prod(grad_shape):  # nccl does not support zero-sized tensors
-                    g = all_sum(cores, g, colocate=colocate_gradients_with_ops)
+                    g = all_sum(cores, g, colocate=colocate_sum)
 
                   for dev, gg in zip(cores, g):
                       dev_grads[dev][var_idx] = (gg, dev_grads[dev][var_idx][1])
@@ -567,8 +613,8 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
                       grads = [(g * coef, v) for g, v in grads]
 
               # Check for overflows.
-              with tf.name_scope("CheckOverflow"):
-                  grad_ok = tf.reduce_all(tf.stack([tf.reduce_all(tf.is_finite(g)) for g, v in grads]))
+              #with tf.name_scope("CheckOverflow"):
+              #    grad_ok = tf.reduce_all(tf.stack([tf.reduce_all(tf.is_finite(g)) for g, v in grads]))
 
               # Update weights and adjust loss scaling.
               with tf.name_scope("UpdateWeights"):
@@ -576,14 +622,15 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
                   #opt = _dev_opt[dev]
                   opt = results['shards'][dev_idx].opt
                   #ls_var = get_loss_scaling_var(dev)
-                  ls_var = None
+                  #ls_var = None
 
-                  if not use_loss_scaling:
-                      ops.append(tf.cond(grad_ok, lambda: opt.apply_gradients(grads), tf.no_op))
-                  else:
-                      ops.append(tf.cond(grad_ok,
-                                         lambda: tf.group(tf.assign_add(ls_var, loss_scaling_inc), opt.apply_gradients(grads)),
-                                         lambda: tf.group(tf.assign_sub(ls_var, loss_scaling_dec))))
+                  #if not use_loss_scaling:
+                  #    ops.append(tf.cond(grad_ok, lambda: opt.apply_gradients(grads), tf.no_op))
+                  #else:
+                  #    ops.append(tf.cond(grad_ok,
+                  #                       lambda: tf.group(tf.assign_add(ls_var, loss_scaling_inc), opt.apply_gradients(grads)),
+                  #                       lambda: tf.group(tf.assign_sub(ls_var, loss_scaling_dec))))
+                  ops.append(opt.apply_gradients(grads))
       opt_apply = tf.group(*ops, name="TrainingOp")
 
       #present = tf.concat(results['present'], axis=0)
@@ -701,6 +748,10 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
       #  with tf.control_dependencies([init_op]):
       #    return tf.group(reset_ops)
       #opt_init = init()
+      #with tf.control_dependencies(init_uninitialized_vars(shards[0].all_vars)):
+      #  ops = [reset_var[v] for v in shards[0].all_vars]
+      #init_ops = init_uninitialized_vars(shards[0].all_vars)
+      #opt_init = tf.group(init_ops, name="Initialize")
       opt_init = tf.global_variables_initializer()
       #opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards])
       #opt_train = tf.tuple([x.loss for x in shards], control_inputs=[x.opt_apply for x in shards[1:]])
