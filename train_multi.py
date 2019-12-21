@@ -1021,7 +1021,7 @@ def main():
     #tflex.trainer.ensure()
     #if not tflex.trainer.thread.is_alive():
     #  tflex.trainer.thread.start()
-    random.shuffle(tflex.targets)
+    #random.shuffle(tflex.targets)
     def add_trainer(target, delaying=10.0):
       #released = False
       try:
