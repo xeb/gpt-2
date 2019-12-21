@@ -17,7 +17,7 @@ import tflex
 try:
   from IPython.display import clear_output
 except:
-  def clear_output():
+  def clear_output(wait=False):
     pass
 
 def interact_model(
@@ -96,7 +96,7 @@ def interact_model(
           while True:
             for text, tokens in generate_result(context_tokens=context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
               if first:
-                clear_output()
+                clear_output(wait=True)
                 sys.stdout.write(enc.decode(context_tokens))
                 sys.stdout.flush()
                 first = False
