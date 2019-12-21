@@ -729,14 +729,11 @@ def trainer_fresh(trainer):
 tflex.trainer_fresh = trainer_fresh
 
 def reset_trainer_stats(trainer):
-  if not tflex.trainer_alive(trainer):
-    return False
   x = trainer
   x.avg_loss[0] = x.avg_loss[1] = x.avg_perp[0] = x.avg_perp[1] = 0.0
   x.start_time = time.time()
   x.prev_time = x.start_time
   x.start_count = x.counter
-  return True
 
 tflex.reset_trainer_stats = reset_trainer_stats
 
