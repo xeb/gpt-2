@@ -255,6 +255,10 @@ class TrainGPT2(object):
   def variables(self, index):
     return tflex.trainer_variables(self, index)
 
+  @property
+  def slices(self):
+    return tflex.trainer_slices(self)
+
 def trainer_fork(existing, target):
     self = TrainGPT2()
     for k, v in existing.__dict__.items():
@@ -469,6 +473,15 @@ def trainer_variables(self, index, variables=None):
 
 tflex.trainer_variables = trainer_variables
 
+def trainer_slices(self, variables=None):
+  if variables is None:
+    variables = self.fetch_vars
+  else:
+    variables = list(tflex.split_by_params(variables))
+  return len(variables)
+
+tflex.trainer_slices = trainer_slices
+
 def trainer_update_lr(self, step=None, rate=None):
   global_step = self.global_step
   args = self.args
@@ -496,12 +509,62 @@ def trainer_ensure(self):
     args = self.args
     self.say('Initializing...')
     self.sess.run(self.init, options=config_pb2.RunOptions(timeout_in_ms=tflex.initialize_timeout))
+    self.init = None
     if not args.fresh_model:
       tflex.load_trainer(self)
-    self.say('Initialized.')
-    self.init = None
+    print('Broadcasting variables...')
+    tflex.trainer_reset_variables(self, self.all_vars, timeout_in_ms=5*60000)
+    self.say('Warming up...')
+    if not tflex.trainer_warmup(self):
+      self.say('Warmup failed!')
+      self.dead = True
+      return False
+    else:
+      self.say('Initialized.')
+  if not self.thread.is_alive():
+    self.thread.start()
+  return True
 
 tflex.trainer_ensure = trainer_ensure
+
+tflex.retry_count = 4
+
+def trainer_warmup(self, retry_count=None, verbose=True):
+  slices = tflex.trainer_slices(self)
+  if retry_count is None:
+    retry_count = tflex.retry_count
+  # do a training step.
+  self.say('Warmup: training step...')
+  for retry in range(retry_count):
+    success = False
+    try:
+      tflex.trainer_fit(self)
+      success = True
+    except DeadlineExceededError:
+      pass
+  if tflex.averaging:
+    self.say('Warmup: averaging...')
+    for index in tqdm.tqdm(range(slices)) if verbose else range(slices):
+      for variables in [self.variables(index=index)]:
+        success = False
+        for retry in range(retry_count):
+          try:
+            # read the slice.
+            self.say('Warmup: reading slice %d...' % index)
+            values = self.sess.run(tflex.cast_variables(variables, graph=self.sess.graph), options=config_pb2.RunOptions(timeout_in_ms=tflex.read_deadline))
+            # write the slice.
+            self.say('Warmup: writing slice %d...' % index)
+            tflex.trainer_assign_values(self, variables, values)
+            success = True
+            break
+          except DeadlineExceededError:
+            pass
+        if not success:
+          return False
+  self.say('Warmup successful!')
+  return True
+
+tflex.trainer_warmup = trainer_warmup
 
 def trainer_prepare(self):
   load_lightweight(self.global_step, self.counter, session=self.sess)
@@ -526,19 +589,43 @@ def trainer_feed(self, batch):
 
 tflex.trainer_feed = trainer_feed
 
-def trainer_opt_apply(self):
+tflex.train_timeout = 600000
+tflex.gather_timeout = 30000
+tflex.broadcast_timeout = 30000
+tflex.loss_timeout = 30000
+
+def trainer_opt_apply(self, batch=None):
+  if batch is None:
+    batch = tflex.trainer_generate(self)
+  self.say('Running opt_feed...')
+  tflex.trainer_feed(self, batch)
   self.say('Running opt_apply...')
   the = self.output['the']
-  opt_loss = the.opt_loss
+  shards = self.output['shards']
+  opt_losses = the.opt_losses
   opt_apply = the.opt_apply
   opt_gather = the.opt_gather
+  opt_broadcast = the.opt_broadcast
   opt_train = the.opt_train
   #(_, v_loss, v_summary) = self.sess.run((self.opt_apply, self.loss, self.summaries), options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
   #v_perp = math.exp(v_loss)
-  v_losses = self.sess.run(opt_train, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
+  v_losses = self.sess.run(opt_train, options=config_pb2.RunOptions(timeout_in_ms=tflex.train_timeout))
   def thunk(_):
-    self.say('Running opt_gather...')
-    self.sess.run(opt_gather, options=config_pb2.RunOptions(timeout_in_ms=self.timeout))
+    #self.say('Running opt_gather...')
+    #self.sess.run(opt_gather, options=config_pb2.RunOptions(timeout_in_ms=tflex.gather_timeout))
+    #self.say('Running opt_broadcast...')
+    #self.sess.run(opt_broadcast, options=config_pb2.RunOptions(timeout_in_ms=tflex.broadcast_timeout))
+    self.say('Running opt_losses...')
+    losses = self.sess.run(opt_losses, options=config_pb2.RunOptions(timeout_in_ms=tflex.loss_timeout))
+    self.say('Loss deltas: %s' % (repr([x-y for x, y in zip(losses, v_losses)])))
+    #batch_size = len(batch)
+    #num_cores = len(shards)
+    #assert(len(batch) % num_cores == 0)
+    #j = batch_size // num_cores
+    #parts = tflex.tuples(j, batch)
+    #tflex.trainer_feed(self, parts[0]*num_cores)
+    #losses = self.sess.run(opt_losses, options=config_pb2.RunOptions(timeout_in_ms=tflex.loss_timeout))
+    #self.say('Losses (validation): %s before: %s' % (repr(losses), v_losses))
   #tflex.parallelize([0], thunk)
   thunk(0)
   return v_losses
@@ -554,10 +641,7 @@ def trainer_summary_log(self, v_loss):
 tflex.trainer_summary_log = trainer_summary_log
 
 def trainer_fit(self):
-  tflex.trainer_ensure(self)
   v_rate, v_weight_decay = tflex.trainer_prepare(self)
-  batch = tflex.trainer_generate(self)
-  tflex.trainer_feed(self, batch)
   v_losses = tflex.trainer_opt_apply(self)
   v_loss = sum(v_losses) / len(v_losses)
   v_summary = tflex.trainer_summary_log(self, v_loss)
@@ -567,7 +651,7 @@ def trainer_fit(self):
   self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
                    self.avg_perp[1] * 0.99 + 1.0]
   now = time.time()
-  print('{stamp} {target:16s}::{core} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f}({avgloss:2.4f}) perp={perp:2.4f}({avgperp:2.4f}) lr={rate:0.12f} step={step}\n\tlosses={losses}'
+  print('{stamp} {target:16s}::{core} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f}({avgloss:2.4f}) perp={perp:2.4f}({avgperp:2.4f}) lr={rate:0.12f} step={step}'#\n\tlosses={losses}'
       .format(
           stamp=timestamp(),
           core=self.core,
@@ -596,11 +680,17 @@ def trainer_fit(self):
 tflex.trainer_fit = trainer_fit
 
 def trainer_toplevel(self):
-  while not self.stopped:
-    while self.paused:
-      time.sleep(0.1)
-    tflex.trainer_fit(self)
+  while not self.stopped and tflex.trainer_alive(self):
     time.sleep(0.1)
+    if self.paused:
+      continue
+    if not tflex.trainer_ensure(self):
+      self.stopped = True
+      break
+    result = tflex.trainer_fit(self)
+    if result is None or result is False:
+      self.stopped = True
+      break
 
 tflex.trainer_toplevel = trainer_toplevel
 
@@ -667,8 +757,6 @@ def load_trainer(trainer, ckpt=None, reset_stats=True):
   print('Loading snapshot %s...' % ckpt)
   t0 = time.time()
   saver.restore(sess, ckpt)
-  print('Broadcasting variables...')
-  tflex.trainer_reset_variables(trainer, trainer.all_vars, timeout_in_ms=5*60000)
   t1 = time.time()
   print('Loaded in %f seconds' % (t1 - t0))
   if reset_stats:
@@ -1058,8 +1146,6 @@ def main():
           if tflex.ensure_on_init:
             with tflex.trainers_init_sema:
               trainer.ensure()
-          if not trainer.thread.is_alive():
-            trainer.thread.start()
           with tflex.trainers_lock:
             for existing in tflex.trainers:
               if existing.sess.target == target:
