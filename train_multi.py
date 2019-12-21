@@ -408,8 +408,9 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       #fetch_vars = list(tflex.split_by_params(all_vars))
 
       summary_lr = tf.summary.scalar('learning_rate', lr)
-      summary_wd = tf.summary.scalar('weight_decay', wd)
-      summaries = tf.summary.merge([summary_lr, summary_wd, summary_loss, summary_perp])
+      #summary_wd = tf.summary.scalar('weight_decay', wd)
+      #summaries = tf.summary.merge([summary_lr, summary_wd, summary_loss, summary_perp])
+      summaries = tf.summary.merge([summary_lr, summary_loss, summary_perp])
       self.summaries = summaries
       self.summary_log = tflex.trainer_open_summary_log(run_name=args.run_name, target=target)
       #self.loss = loss
