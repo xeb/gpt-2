@@ -86,10 +86,13 @@ def interact_model(
           total_tokens = context_tokens[:]
           while len(context_tokens) > length - step - 1:
             context_tokens = context_tokens[1:]
-          sys.stdout.write(enc.decode(context_tokens))
-          sys.stdout.flush()
+          first = True
           while True:
             for text, tokens in generate_result(context_tokens=context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
+              if first:
+                sys.stdout.write(enc.decode(context_tokens))
+                sys.stdout.flush()
+                first = False
               sys.stdout.write(text)
               sys.stdout.flush()
               #print('')
