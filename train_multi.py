@@ -866,7 +866,7 @@ def trainer_assign_values(self, variables, values, timeout_in_ms=tflex.write_dea
 
 tflex.trainer_assign_values = trainer_assign_values
 
-def update_trainers(trainers, i, sync_all=False, timeout=30):
+def update_trainers(trainers, i, sync_all=False, timeout=15):
   trainers = [x for x in trainers]
   if len(trainers) <= 0:
     return
@@ -930,12 +930,12 @@ def update_trainers(trainers, i, sync_all=False, timeout=30):
     thread = threading.Thread(target=thunk, args=(trainer,i,))
     thread.start()
     threads.append(thread)
-  start_time = time.time()
-  for thread in threads:
-    elapsed = (time.time() - start_time)
-    waiting = timeout - elapsed
-    if waiting > 0:
-      thread.join(timeout=waiting)
+  #start_time = time.time()
+  #for thread in threads:
+  #  elapsed = (time.time() - start_time)
+  #  waiting = timeout - elapsed
+  #  if waiting > 0:
+  #    thread.join(timeout=waiting)
   #print('Synchronized.')
 
 tflex.update_trainers = update_trainers
