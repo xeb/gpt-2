@@ -147,7 +147,7 @@ def grab_values(variables, reader, reshape=False):
     value = truncate_value(variable, value, reshape=reshape)
     yield variable, value
 
-def assign_values(variables, values, session=None, timeout_in_ms=30000):
+def assign_values(variables, values, session=None, timeout_in_ms=60000):
   session = session or tf.get_default_session()
   ops = [x.initializer for x in variables]
   vals = dict([(x.initializer.inputs[1], value) for x, value in zip(variables, values)]) # TODO: bfloat16 support
