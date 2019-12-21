@@ -275,8 +275,16 @@ def trainer_fork(existing, target):
 
 tflex.trainer_fork = trainer_fork
 
-def trainer_open_summary_log(run_name, target):
-  run_name = run_name + "_" + target
+def generate_nonce(length=6):
+    """Generate pseudorandom number."""
+    return ''.join([str(random.randint(0, 9)) for i in range(length)])
+
+tflex.generate_nonce = generate_nonce
+
+def trainer_open_summary_log(run_name, target, nonce=None):
+  if nonce is None:
+    nonce = generate_nonce()
+  run_name = run_name + "_" + target + "_" + nonce
   run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
   return tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
 
