@@ -14,11 +14,12 @@ import model, sample, encoder
 
 import tflex
 
-try:
-  from IPython.display import clear_output
-except:
-  def clear_output(wait=False):
-    pass
+def clear_output(wait=False):
+  import subprocess, platform
+  if platform.system()=="Windows":
+      subprocess.Popen("cls", shell=True).communicate()
+  else:
+      print("\033c", end="")
 
 def interact_model(
     model_name='117M',
