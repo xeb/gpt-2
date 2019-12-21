@@ -183,7 +183,7 @@ tflex.initialize_timeout = 10*60000
 tflex.context_load_timeout = 10000
 tflex.ensure_on_init = True
 tflex.release_trainer_sema = True
-tflex.tpu_init_timeout = 10000
+tflex.tpu_init_timeout = 30000
 tflex.summary_log_timeout = 10000
 tflex.use_global_data_sampler = False
 tflex.shuffle_cycles = True
@@ -839,7 +839,7 @@ def parallelize(xs, thunk, *args):
 #tflex.read_deadline = 20000
 #tflex.write_deadline = 20000
 tflex.read_deadline = 60000
-tflex.write_deadline = 60000
+tflex.write_deadline = 120000
 tflex.reset_deadline = 120000
 
 def assign_values(variables, values, session=None, timeout_in_ms=tflex.write_deadline):
