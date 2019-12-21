@@ -445,9 +445,31 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
 
 tflex.trainer_create = trainer_create
 
-def trainer_sample_batch(self):
-  args = self.args
-  return [self.sampler.sample(args.sample_ctx) for _ in range(args.batch_size)]
+tflex.sample_lock = threading.Lock()
+tflex.sample_step = 25
+tflex.sample_ahead = 100
+
+def trainer_sample_batch(self, count=None, length=None):
+  if not hasattr(self, "samples"):
+    self.samples = []
+  if count is None:
+    count = self.args.batch_size
+  if length is None:
+    length = self.args.sample_ctx
+  n = tflex.sample_ahead
+  step = tflex.sample_step
+  size = self.hparams.n_ctx
+  if len(self.samples) < count:
+    with tflex.sample_lock:
+      if len(self.samples) < count:
+        self.say('Generating %d samples of %d tokens...' % (n, size))
+        for i in tqdm.tqdm(range(0, n, step)):
+          for j in range(step):
+            tokens = self.sampler.sample(size)
+            #print(repr(tokens), repr(size), len(tokens))
+            if len(tokens) >= size:
+              self.samples.append(tokens)
+  return [self.samples.pop()[0:length] for _ in range(count)]
 
 tflex.trainer_sample_batch = trainer_sample_batch
 
@@ -601,7 +623,7 @@ tflex.loss_timeout = 30000
 def trainer_opt_apply(self, batch=None):
   if batch is None:
     batch = tflex.trainer_generate(self)
-  self.say('Running opt_feed...')
+  #self.say('Running opt_feed...')
   tflex.trainer_feed(self, batch)
   self.say('Running opt_apply...')
   the = self.output['the']
@@ -921,7 +943,7 @@ def save_lowest_loss(trainers=None):
     print('Saving:')
     print_trainer(trainer)
     print('-----')
-    if save_trainer(trainer):
+    if tflex.save_trainer(trainer):
       print('-----')
       print_trainer(trainer)
       print('Saved')
