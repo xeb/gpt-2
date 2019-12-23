@@ -91,6 +91,8 @@ class Encoder:
                 pairs = get_pairs(word)
         word = ' '.join(word)
         self.cache[token] = word
+        while len(self.cache) > 1000:
+          self.cache.popitem()
         return word
 
     def encode(self, text):

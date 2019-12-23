@@ -186,7 +186,7 @@ tflex.ensure_on_init = True
 tflex.release_trainer_sema = True
 tflex.tpu_init_timeout = 30000
 tflex.summary_log_timeout = 10000
-tflex.use_global_data_sampler = False
+tflex.use_global_data_sampler = True
 tflex.shuffle_cycles = True
 
 def eval_lightweight(variable, session, timeout_in_ms=None):
