@@ -9,10 +9,11 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--model_name', metavar='MODEL', type=str, default='117M', help='Pretrained model name')
 parser.add_argument('--combine', metavar='CHARS', type=int, default=50000, help='Concatenate files with <|endoftext|> separator into chunks of this minimum size')
-parser.add_argument('-i', '--in_text', metavar='PATH', type=str, default='test.txt', help='Input file, directory, or glob pattern (utf-8 text).')
-parser.add_argument('-o', '--out_npz', metavar='OUT.npz', type=str, default='', help='Output file path')
 parser.add_argument('-s', '--step', type=int, default=128*1024, help='Number of lines to encode at a time')
 parser.add_argument('-b', '--batch', action='store_true', default=False, help='Use tokenizer.encode_batch')
+parser.add_argument('-c', '--compression', action='store_true', default=False, help='Save using compression (via .savez_compressed)')
+parser.add_argument('in_text', metavar='PATH', type=str, help='Input file')
+parser.add_argument('out_npz', metavar='OUT.npz', type=str, default='', nargs='?', help='Output file path')
 args = parser.parse_args()
 
 # Initialize a tokenizer based on BPE
@@ -89,5 +90,8 @@ elapsed = time.time() - start
 print('%d tokens in %.4fs (%.4f tokens/sec)' % (len(tokens), elapsed, len(tokens)/elapsed))
 if args.out_npz and len(args.out_npz) > 0:
   print('Saving to %s...' % args.out_npz)
-  np.savez_compressed(args.out_npz, tokens)
+  if args.compression:
+    np.savez_compressed(args.out_npz, tokens)
+  else:
+    np.savez(args.out_npz, tokens)
 
