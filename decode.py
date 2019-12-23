@@ -25,7 +25,7 @@ def main():
     chunks = load_dataset(enc, args.in_npz, args.combine)
     for chunk in chunks:
       text = enc.decode(chunk)
-      print(text)
+      sys.stdout.write(text)
       sys.stdout.flush()
 
 if __name__ == '__main__':
