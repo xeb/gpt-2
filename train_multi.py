@@ -447,7 +447,7 @@ tflex.trainer_create = trainer_create
 
 tflex.sample_lock = threading.Lock()
 tflex.sample_step = 25
-tflex.sample_ahead = 100
+tflex.sample_ahead = 1000
 
 def trainer_sample_batch(self, count=None, length=None):
   if not hasattr(self, "samples"):
