@@ -30,9 +30,9 @@ def interact_model(
     nsamples=1,
     step=1,
     length=64,
-    prompt="",
-    clear="<|endoftext|>",
-    maxlen=4096,
+    prompt="\n",
+    clear=None,
+    maxlen=-1,
     temperature=1,
     top_k=0,
     top_p=0
@@ -47,7 +47,7 @@ def interact_model(
     :length=64 : Window size; use 1024 for maximum size per sample
     :prompt="" : Prompt to start with. The default of "" prompts with an <|endoftext|> token.
     :clear="<|endoftext|>" : If this is encountered, clear the context window.
-    :maxlen=4096 : if this many tokens are generated without
+    :maxlen=-1 : if this many tokens are generated without
      encountering --clear, then print it and clear the context window.
     :temperature=1 : Float value controlling randomness in boltzmann
      distribution. Lower temperature results in less random completions. As the
@@ -94,10 +94,13 @@ def interact_model(
               raw_text = f.read()
           except:
             raw_text = prompt
+          raw_text = raw_text.replace('\\n', '\n')
+          raw_text = raw_text.replace('\\t', '\t')
           #print(repr(raw_text))
-          context_tokens = enc.encode(raw_text) if len(raw_text) > 0 else [enc.encoder["<|endoftext|>"]]
+          context_tokens = enc.encode(raw_text) if len(raw_text) > 0 else [50256]
           while len(context_tokens) > length - step - 1:
             context_tokens = context_tokens[1:]
+          prompt_tokens = context_tokens[:]
           first = True
           backlog = []
           backlog_count = 0
@@ -106,7 +109,7 @@ def interact_model(
           while True:
             for tokens in generate_result(context_tokens=context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
               if first:
-                clear_output(wait=True)
+                #clear_output(wait=True)
                 sys.stdout.write(enc.decode(context_tokens))
                 sys.stdout.flush()
                 first = False
@@ -114,17 +117,19 @@ def interact_model(
               backlog_count += 1
               if is_ascii(enc.decode([backlog[-1]])) or backlog_count > 16:
                 text = enc.decode(backlog)
-                result, *rest = text.split(clear)
+                result = text
+                if clear is not None:
+                  result, *rest = text.split(clear)
                 sys.stdout.write(result)
                 sys.stdout.flush()
                 context_text += text
                 context_count += len(backlog)
-                if context_count > maxlen or clear in context_text:
+                if maxlen > 0 and context_count > maxlen or clear is not None and clear in context_text:
                   context_text = ""
                   context_count = 0
                   context_tokens = []
-                  sys.stdout.write(clear)
-                  sys.stdout.flush()
+                  first = True
+                  tokens = prompt_tokens[:]
                 backlog = []
                 backlog_count = 0
               context_tokens.extend(tokens)
