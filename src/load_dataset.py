@@ -135,8 +135,10 @@ def grab_tokens(f, enc, n):
   # dataset).
   return tokens[3:], line
 
+import threading
+
 class TextSampler(object):
-  def __init__(self, fp, enc, seed=None, verbose=False):
+  def __init__(self, fp, enc, seed=None, verbose=False, use_locking=False):
     if isinstance(fp, str):
       fp = open(fp, 'rb')
     self.fp = fp
@@ -145,20 +147,27 @@ class TextSampler(object):
     self.rs = np.random.RandomState(seed=seed)
     self.enc = enc
     self.verbose = verbose
+    self.lock = threading.Lock() if use_locking else None
 
   def sample(self, length):
-    attempts = 0
-    while True:
-      attempts += 1
-      if attempts > 10:
-        print('Could not sample from dataset; too small?')
-        return None
-      index = self.rs.randint(0, self.total_size)
-      self.fp.seek(index, 0)
-      tokens, line = grab_tokens(self.fp, self.enc, length)
-      if len(tokens) >= length:
-        if self.verbose:
-          line = self.enc.decode(tokens)
-          print(repr(line))
-        return tokens[0:length]
+    try:
+      if self.lock:
+        self.lock.acquire()
+      attempts = 0
+      while True:
+        attempts += 1
+        if attempts > 10:
+          print('Could not sample from dataset; too small?')
+          return None
+        index = self.rs.randint(0, self.total_size)
+        self.fp.seek(index, 0)
+        tokens, line = grab_tokens(self.fp, self.enc, length)
+        if len(tokens) >= length:
+          if self.verbose:
+            line = self.enc.decode(tokens)
+            print(repr(line))
+          return tokens[0:length]
+    finally:
+      if self.lock:
+        self.lock.release()
 
