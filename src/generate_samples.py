@@ -45,8 +45,8 @@ def interact_model(
     :nsamples=1 : Number of samples to return total
     :step=1 : Number of tokens to generate at a time
     :length=64 : Window size; use 1024 for maximum size per sample
-    :prompt="" : Prompt to start with. The default of "" prompts with an <|endoftext|> token.
-    :clear="<|endoftext|>" : If this is encountered, clear the context window.
+    :prompt="\\n" : Prompt to start with. The default of "" prompts with an <|endoftext|> token.
+    :clear=None : If this string is encountered, clear the context window.
     :maxlen=-1 : if this many tokens are generated without
      encountering --clear, then print it and clear the context window.
     :temperature=1 : Float value controlling randomness in boltzmann
