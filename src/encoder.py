@@ -148,8 +148,11 @@ class HighSpeedTokenizer(object):
     self.tokenizer = tokenizer
 
   def encode(self, text):
-    encoding = self.tokenizer.encode(text)
-    return encoding.ids
+    tokens = []
+    for line in text.splitlines():
+      encoding = self.tokenizer.encode(line + '\n')
+      tokens.extend(encoding.ids)
+    return tokens
 
   def decode(self, tokens):
     text = self.tokenizer.decode(tokens, False)
