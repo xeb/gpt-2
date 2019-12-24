@@ -774,7 +774,7 @@ def main():
     tflex.trainers = []
     tflex.pending_trainers = []
     tflex.pinned_trainers = []
-    tflex.trainers_sema = threading.BoundedSemaphore(value=3)
+    tflex.trainers_sema = threading.BoundedSemaphore(value=6)
     tflex.trainers_init_sema = threading.BoundedSemaphore(value=100)
     tflex.trainers_lock = threading.RLock()
     def add_trainer(target, delaying=True):
