@@ -14,6 +14,10 @@ import model, sample, encoder
 
 import tflex
 
+@tflex.register_command
+def clear_context():
+  tflex.reset_context()
+
 def clear_output(wait=False):
   import subprocess, platform
   if platform.system()=="Windows":
@@ -73,7 +77,7 @@ def interact_model(
     if step > length:
         raise ValueError("Can't get samples longer than length: %s" % length)
 
-    with tf.Session(graph=tf.Graph()) as sess:
+    with tflex.Session(graph=tf.Graph()) as sess:
         context = tf.placeholder(tf.int32, [batch_size, None])
         np.random.seed(seed)
         tf.set_random_seed(seed)
@@ -89,52 +93,60 @@ def interact_model(
         saver.restore(sess, ckpt)
 
         while True:
+          tflex.check_commands()
+          if tflex.should_quit():
+            break
           try:
             with open(prompt) as f:
-              raw_text = f.read()
+              tflex.raw_text = f.read()
           except:
-            raw_text = prompt
-          raw_text = raw_text.replace('\\n', '\n')
-          raw_text = raw_text.replace('\\t', '\t')
-          #print(repr(raw_text))
-          context_tokens = enc.encode(raw_text) if len(raw_text) > 0 else [50256]
-          while len(context_tokens) > length - step - 1:
-            context_tokens = context_tokens[1:]
-          prompt_tokens = context_tokens[:]
-          first = True
-          backlog = []
-          backlog_count = 0
-          context_text = ""
-          context_count = 0
+            tflex.raw_text = prompt
+          tflex.raw_text = tflex.raw_text.replace('\\n', '\n')
+          tflex.raw_text = tflex.raw_text.replace('\\t', '\t')
+          #print(repr(tflex.raw_text))
+          tflex.context_tokens = enc.encode(tflex.raw_text) if len(tflex.raw_text) > 0 else [50256]
+          while len(tflex.context_tokens) > length - step - 1:
+            tflex.context_tokens = tflex.context_tokens[1:]
+          tflex.prompt_tokens = tflex.context_tokens[:]
+          tflex.first = True
+          tflex.backlog = []
+          tflex.backlog_count = 0
+          tflex.context_text = ""
+          tflex.context_count = 0
           while True:
-            for tokens in generate_result(context_tokens=context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
-              if first:
+            for tokens in generate_result(context_tokens=tflex.context_tokens, enc=enc, output=output, context=context, nsamples=1, batch_size=batch_size, sess=sess):
+              tflex.tokens = tokens
+              if tflex.first:
                 #clear_output(wait=True)
-                sys.stdout.write(enc.decode(context_tokens))
+                sys.stdout.write(enc.decode(tflex.context_tokens))
                 sys.stdout.flush()
-                first = False
-              backlog.extend(tokens)
-              backlog_count += 1
-              if is_ascii(enc.decode([backlog[-1]])) or backlog_count > 16:
-                text = enc.decode(backlog)
+                tflex.first = False
+              tflex.backlog.extend(tflex.tokens)
+              tflex.backlog_count += 1
+              if is_ascii(enc.decode([tflex.backlog[-1]])) or tflex.backlog_count > 16:
+                text = enc.decode(tflex.backlog)
                 result = text
                 if clear is not None:
                   result, *rest = text.split(clear)
                 sys.stdout.write(result)
                 sys.stdout.flush()
-                context_text += text
-                context_count += len(backlog)
-                if maxlen > 0 and context_count > maxlen or clear is not None and clear in context_text:
-                  context_text = ""
-                  context_count = 0
-                  context_tokens = []
-                  first = True
-                  tokens = prompt_tokens[:]
-                backlog = []
-                backlog_count = 0
-              context_tokens.extend(tokens)
-              while len(context_tokens) > length - step - 1:
-                context_tokens = context_tokens[1:]
+                tflex.context_text += text
+                tflex.context_count += len(tflex.backlog)
+                def reset_context():
+                  tflex.context_text = ""
+                  tflex.context_count = 0
+                  tflex.context_tokens = []
+                  tflex.first = True
+                  tflex.tokens = tflex.prompt_tokens[:]
+                tflex.reset_context = reset_context
+                if maxlen > 0 and tflex.context_count > maxlen or clear is not None and clear in tflex.context_text:
+                  tflex.reset_context()
+                tflex.backlog = []
+                tflex.backlog_count = 0
+              tflex.check_commands()
+              tflex.context_tokens.extend(tflex.tokens)
+              while len(tflex.context_tokens) > length - step - 1:
+                tflex.context_tokens = tflex.context_tokens[1:]
 
 def generate_result(context_tokens, enc, output, context, nsamples=1, batch_size=1, sess=tf.get_default_session()):
     for _ in range(nsamples // batch_size):
