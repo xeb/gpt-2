@@ -17,6 +17,9 @@ import tflex
 @tflex.register_command
 def clear_context():
   tflex.reset_context()
+  print('')
+  print('')
+  print('')
 
 def clear_output(wait=False):
   import subprocess, platform
