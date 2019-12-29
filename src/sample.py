@@ -2,6 +2,20 @@ import tensorflow as tf
 
 import model
 
+def penalize_used(logits, output):
+
+    # I want to change the indices of logits wherever the index is found in output
+    change_tensor = tf.zeros_like(logits, dtype=logits.dtype)
+    unique = tf.unique(output[0])[0]
+    ones = tf.ones_like(unique, dtype=unique.dtype)
+    indices = tf.expand_dims(unique, 1)
+
+    updates = tf.scatter_nd(indices, ones, [logits.shape[1]])
+
+    bool_tensor = tf.expand_dims(tf.cast(updates, tf.bool), 0)
+
+    return tf.compat.v1.where(bool_tensor, logits * 0.85, logits)
+
 def top_k_logits(logits, k, epsilon=-1e10):
     if k == 0:
         # no truncation
@@ -65,6 +79,7 @@ def sample_sequence(*, hparams, length, start_token=None, batch_size=None, conte
         def body(past, prev, output):
             next_outputs = step(hparams, prev[:, tf.newaxis], past=past)
             logits = next_outputs['logits'][:, -1, :]  / tf.to_float(temperature)
+            logits = penalize_used(logits, output)
             if top_p > 0.0:
                 logits = top_p_logits(logits, p=top_p, epsilon=epsilon)
             else:
