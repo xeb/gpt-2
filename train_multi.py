@@ -992,37 +992,66 @@ def trainer_assign_values(self, variables, values, timeout_in_ms=tflex.write_dea
 
 tflex.trainer_assign_values = trainer_assign_values
 
+class VariableAccumulator(object):
+  pass
+
+def variable_accumulator_new():
+  self = VariableAccumulator()
+  self.accum = {}
+  self.accumcount = defaultict(int)
+  self.lock = threading.Lock()
+  return self
+
+tflex.variable_accumulator_new = variable_accumulator_new
+
+def variable_accumulator_add(self, variable, value):
+  if np.isnan(value).any():
+    return False
+  if np.isinf(value).any():
+    return False
+  if variable.name in self.accum:
+    self.accum[variable.name] = self.accum[variable.name] + value
+  else:
+    self.accum[variable.name] = value
+  self.accumcount[variable.name] += 1
+  return True
+
+tflex.variable_accumulator_add = variable_accumulator_add
+
+def trainer_slice_read(trainer, accumulator, variables):
+  values = trainer.sess.run(tflex.cast_variables(variables, graph=trainer.sess.graph), options=config_pb2.RunOptions(timeout_in_ms=tflex.read_deadline))
+  with accumulator.lock:
+    for variable, value in zip(variables, values):
+      tflex.variable_accumulator_add(accumulator, variable, value)
+
+tflex.trainer_slice_read = trainer_slice_read
+
+def trainer_slice_write(trainer, accumulator, variables):
+  values = []
+  for variable in variables:
+    with accumulator.lock:
+      assert(variable.name in accumulator.accum)
+      value = accumulator.accum[variable.name]
+      n = accumulator.accumcount[variable.name]
+    assert(n > 0)
+    values.append(value / n)
+  tflex.trainer_assign_values(trainer, variables, values)
+
+tflex.trainer_slice_write = trainer_slice_write
+
 def update_trainers(trainers, i, sync_all=False, timeout=15):
   trainers = [x for x in trainers]
   if len(trainers) <= 0:
     return
-  #trainers = [x for x in all_trainers if not x.aborted()]
-  #print('Fetching...')
-  accum = {}
-  accumcount = defaultdict(int)
-  lock = threading.Lock()
+  accumulator = tflex.variable_accumulator_new()
   threads = []
   for trainer in trainers:
     if tflex.trainer_fresh(trainer):
       continue
-    def thunk(trainer, lock, index):
+    def thunk(trainer, accumulator, index):
       for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
-        values = trainer.sess.run(tflex.cast_variables(variables, graph=trainer.sess.graph), options=config_pb2.RunOptions(timeout_in_ms=tflex.read_deadline))
-        try:
-          lock.acquire()
-          for variable, value in zip(variables, values):
-            if np.isnan(value).any():
-              continue
-            if np.isinf(value).any():
-              continue
-            if variable.name in accum:
-              accum[variable.name] = accum[variable.name] + value
-            else:
-              accum[variable.name] = value
-            accumcount[variable.name] += 1
-        finally:
-          lock.release()
-    thread = threading.Thread(target=thunk, args=(trainer,lock,i,))
+        tflex.trainer_slice_read(trainer, accumulator, variables)
+    thread = threading.Thread(target=thunk, args=(trainer,accumulator,i,))
     thread.start()
     threads.append(thread)
   start_time = time.time()
@@ -1031,38 +1060,14 @@ def update_trainers(trainers, i, sync_all=False, timeout=15):
     waiting = timeout - elapsed
     if waiting > 0:
       thread.join(timeout=waiting)
-  #print('Synchronizing...')
   threads = []
   for trainer in trainers:
-    def thunk(trainer, index):
+    def thunk(trainer, accumulator, index):
       for variables in ([trainer.variables(index=index)] if not sync_all else tqdm.tqdm(list(tflex.split_by_params(trainer.global_vars)))):
-        values = []
-        for v in variables:
-          with lock:
-            assert(v.name in accum)
-            value = accum[v.name]
-            n = accumcount[v.name]
-            #assert(n > 0)
-          if n > 0:
-            values.append(value / n)
-        #tflex.assign_values(variables, values, session=trainer.sess)
-        #tflex.assign_values(variables, values, session=trainer.sess, timeout_in_ms=tflex.write_deadline)
-        tflex.trainer_assign_values(trainer, variables, values)
-        #trainer.fresh = False
-        #trainer.avg_loss[0] = avg_loss[0] / avg_count
-        #trainer.avg_loss[1] = avg_loss[1] / avg_count
-        #trainer.avg_perp[0] = avg_perp[0] / avg_count
-        #trainer.avg_perp[1] = avg_perp[1] / avg_count
-    thread = threading.Thread(target=thunk, args=(trainer,i,))
+        tflex.trainer_slice_write(trainer, accumulator, variables)
+    thread = threading.Thread(target=thunk, args=(trainer,accumulator,i,))
     thread.start()
     threads.append(thread)
-  #start_time = time.time()
-  #for thread in threads:
-  #  elapsed = (time.time() - start_time)
-  #  waiting = timeout - elapsed
-  #  if waiting > 0:
-  #    thread.join(timeout=waiting)
-  #print('Synchronized.')
 
 tflex.update_trainers = update_trainers
 
