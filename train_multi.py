@@ -465,15 +465,13 @@ def trainer_sample_batch(self, count=None, length=None):
     count = self.args.batch_size
   if length is None:
     length = self.args.sample_ctx
-  n = tflex.sample_ahead
-  step = tflex.sample_step
   size = self.hparams.n_ctx
   if len(self.samples) < count:
     with tflex.sample_lock:
       if len(self.samples) < count:
-        self.say('Generating %d samples of %d tokens...' % (n, size))
-        for i in tqdm.tqdm(range(0, n, step)):
-          for j in range(step):
+        self.say('Generating %d samples of %d tokens...' % (tflex.sample_ahead, size))
+        for i in tqdm.tqdm(range(0, tflex.sample_ahead, tflex.sample_step)):
+          for j in range(tflex.sample_step):
             tokens = self.sampler.sample(size)
             #print(repr(tokens), repr(size), len(tokens))
             if len(tokens) >= size:
