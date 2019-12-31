@@ -286,10 +286,19 @@ def generate_nonce(length=6):
 
 tflex.generate_nonce = generate_nonce
 
-def trainer_open_summary_log(run_name, target, nonce=None):
-  if nonce is None:
-    nonce = generate_nonce()
-  run_name = run_name + "_" + target + "_" + nonce
+# return current UTC timestamp.
+def utc():
+    from datetime import datetime
+    d = datetime.utcnow()
+    import calendar
+    return calendar.timegm(d.utctimetuple())
+
+tflex.utc = utc
+
+def trainer_open_summary_log(run_name, target, suffix=None):
+  if suffix is None:
+    suffix = str(utc())
+  run_name = run_name + "_" + target + "_" + suffix
   run_name = run_name.replace('/', '_').replace(':', '_').replace('.', '_')
   return tf.summary.FileWriter(os.path.join(CHECKPOINT_DIR, run_name))
 
