@@ -1007,7 +1007,7 @@ class VariableAccumulator(object):
 def variable_accumulator_new():
   self = VariableAccumulator()
   self.accum = {}
-  self.accumcount = defaultict(int)
+  self.accumcount = defaultdict(int)
   self.lock = threading.Lock()
   return self
 
