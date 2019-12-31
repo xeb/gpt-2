@@ -2,7 +2,7 @@ import tensorflow as tf
 
 import model
 
-def penalize_used(logits, output):
+def penalize_used(logits, output, penalize=0.85):
 
     # I want to change the indices of logits wherever the index is found in output
     change_tensor = tf.zeros_like(logits, dtype=logits.dtype)
@@ -14,7 +14,7 @@ def penalize_used(logits, output):
 
     bool_tensor = tf.expand_dims(tf.cast(updates, tf.bool), 0)
 
-    return tf.compat.v1.where(bool_tensor, logits * 0.85, logits)
+    return tf.compat.v1.where(bool_tensor, logits * penalize, logits)
 
 def top_k_logits(logits, k, epsilon=-1e10):
     if k == 0:
@@ -50,7 +50,7 @@ def top_p_logits(logits, p, epsilon=-1e10):
         )
 
 
-def sample_sequence(*, hparams, length, start_token=None, batch_size=None, context=None, temperature=1, top_k=0, top_p=0.0, epsilon=-1e10):
+def sample_sequence(*, hparams, length, start_token=None, batch_size=None, context=None, temperature=1, top_k=0, top_p=0.0, epsilon=-1e10, penalize=0.0):
     if start_token is None:
         assert context is not None, 'Specify exactly one of start_token and context!'
     else:
@@ -79,7 +79,8 @@ def sample_sequence(*, hparams, length, start_token=None, batch_size=None, conte
         def body(past, prev, output):
             next_outputs = step(hparams, prev[:, tf.newaxis], past=past)
             logits = next_outputs['logits'][:, -1, :]  / tf.to_float(temperature)
-            #logits = penalize_used(logits, output)
+            if penalize > 0.0:
+                logits = penalize_used(logits, output, penalize=penalize)
             if top_p > 0.0:
                 logits = top_p_logits(logits, p=top_p, epsilon=epsilon)
             else:
