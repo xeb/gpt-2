@@ -679,17 +679,20 @@ def trainer_fit(self, ignore=False):
   v_rate, v_weight_decay = tflex.trainer_prepare(self)
   v_losses = tflex.trainer_opt_apply(self)
   v_loss = sum(v_losses) / len(v_losses)
-  if ignore:
-    v_summary = None
-  else:
-    v_summary = tflex.trainer_summary_log(self, v_loss)
   v_perp = math.exp(v_loss)
-  self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
-                   self.avg_loss[1] * 0.99 + 1.0]
-  self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
-                   self.avg_perp[1] * 0.99 + 1.0]
+  if tflex.trainer_fresh(self):
+    ignore = True
+  if not ignore:
+    v_summary = tflex.trainer_summary_log(self, v_loss)
+    self.counter = self.current_step.incr()
+    self.summary_log.add_summary(v_summary, self.counter)
+    self.summary_log.flush()
+    self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
+                     self.avg_loss[1] * 0.99 + 1.0]
+    self.avg_perp = [self.avg_perp[0] * 0.99 + v_perp,
+                     self.avg_perp[1] * 0.99 + 1.0]
   now = time.time()
-  print('{stamp} {target:16s}::{core} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f}({avgloss:2.4f}) perp={perp:2.4f}({avgperp:2.4f}) lr={rate:0.12f} step={step}'#\n\tlosses={losses}'
+  print('{stamp} {target:16s}::{core} [{counter} | {time:2.4f} | {delta:2.2f}s | {ops:2.6f}tokens/s] loss={loss:2.4f}({avgloss:2.4f}) perp={perp:2.4f}({avgperp:2.4f}) lr={rate:0.12f} {flags}'#\n\tlosses={losses}'
       .format(
           stamp=timestamp(),
           core=self.core,
@@ -703,16 +706,10 @@ def trainer_fit(self, ignore=False):
           perp=v_perp,
           avgloss=self.avg_loss[0] / self.avg_loss[1],
           avgperp=self.avg_perp[0] / self.avg_perp[1],
-          step=self.counter,
+          flags='[fresh]' if ignore else '',
           losses=v_losses,
           ))
   self.prev_time = now
-  if v_summary is not None:
-    self.summary_log.add_summary(v_summary, self.counter)
-    self.summary_log.flush()
-  if not ignore:
-    self.counter = self.current_step.incr()
-  self.start_count = self.counter
   #load_lightweight(self.global_step, self.counter, session=self.sess)
   return v_loss
 
@@ -762,7 +759,6 @@ def reset_trainer_stats(trainer):
   x.avg_loss[0] = x.avg_loss[1] = x.avg_perp[0] = x.avg_perp[1] = 0.0
   x.start_time = time.time()
   x.prev_time = x.start_time
-  x.start_count = x.counter
 
 tflex.reset_trainer_stats = reset_trainer_stats
 
