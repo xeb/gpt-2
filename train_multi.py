@@ -708,8 +708,8 @@ def trainer_fit(self, ignore=False):
           rate=v_rate,
           loss=v_loss,
           perp=v_perp,
-          avgloss=self.avg_loss[0] / self.avg_loss[1],
-          avgperp=self.avg_perp[0] / self.avg_perp[1],
+          avgloss=self.avg_loss[0] / (self.avg_loss[1] or 1.0),
+          avgperp=self.avg_perp[0] / (self.avg_perp[1] or 1.0),
           flags='[fresh]' if ignore else '',
           losses=v_losses,
           ))
