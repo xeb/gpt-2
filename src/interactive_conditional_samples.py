@@ -25,8 +25,7 @@ def interact_model(
     top_k=0,
     top_p=0.0,
     penalize=0,
-    prompt=None,
-    strip=False
+    prompt=None
 ):
     """
     Interactively run the model
@@ -93,8 +92,8 @@ def interact_model(
                 raw_text = input("Model prompt >>> ")
                 if not raw_text:
                     raw_text="\n"
-            if strip:
-                raw_text = raw_text.rstrip()
+            if len(raw_text) > 1 and raw_text.endswith('\n'):
+                raw_text = raw_text[:-1]
             print('Prompt:', repr(raw_text))
             context_tokens = enc.encode(raw_text)
             generated = 0
