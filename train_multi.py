@@ -35,6 +35,10 @@ from datetime import datetime, timezone
 import threading
 from collections import defaultdict
 
+# We allocate hundreds of threads. By default the OS might give ~2MB
+# to each thread. In practice 128K seems to work fine.
+threading.stack_size(32768 * 4)
+
 CHECKPOINT_DIR = 'checkpoint'
 SAMPLE_DIR = 'samples'
 
