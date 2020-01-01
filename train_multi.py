@@ -1047,6 +1047,7 @@ def trainer_slice_write(trainer, accumulator, variables):
 tflex.trainer_slice_write = trainer_slice_write
 
 tflex.update_trainers_read_timeout = 60
+tflex.update_trainers_write_timeout = 60
 tflex.update_trainers_write_threads = []
 
 def update_trainers(trainers, i, sync_all=False):
@@ -1070,8 +1071,12 @@ def update_trainers(trainers, i, sync_all=False):
     waiting = tflex.update_trainers_read_timeout - elapsed
     if waiting > 0:
       thread.join(timeout=waiting)
+  start_time = time.time()
   for thread in tflex.update_trainers_write_threads:
-    thread.join()
+    elapsed = (time.time() - start_time)
+    waiting = tflex.update_trainers_write_timeout - elapsed
+    if waiting > 0:
+      thread.join(timeout=waiting)
   tflex.update_trainers_write_threads = []
   for trainer in trainers:
     def thunk(trainer, accumulator, index):
