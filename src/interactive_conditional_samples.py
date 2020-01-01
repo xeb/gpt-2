@@ -24,6 +24,7 @@ def interact_model(
     temperature=1,
     top_k=0,
     top_p=0.0,
+    penalize=0,
     prompt=None,
     strip=False
 ):
@@ -46,6 +47,9 @@ def interact_model(
      special setting meaning no restrictions. 40 generally is a good value.
     :top_p=0.0 : Float value controlling diversity. Implements nucleus sampling,
      overriding top_k if set to a value > 0. A good setting is 0.9.
+    :penalize=0.0 : Float value controlling "used" penalty. Implements repetition
+     reduction (similar to CTRL) if set to a value > 0. A decent setting might be 0.85
+     with temperature 0.3 and top_k 40.
     """
     if batch_size is None:
         batch_size = 1
@@ -69,7 +73,7 @@ def interact_model(
             hparams=hparams, length=length,
             context=context,
             batch_size=batch_size,
-            temperature=temperature, top_k=top_k, top_p=top_p
+            temperature=temperature, top_k=top_k, top_p=top_p, penalize=penalize
         )
 
         saver = tflex.Saver()
