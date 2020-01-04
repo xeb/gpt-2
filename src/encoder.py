@@ -149,8 +149,13 @@ class HighSpeedTokenizer(object):
 
   def encode(self, text):
     tokens = []
-    for line in text.splitlines():
-      encoding = self.tokenizer.encode(line + '\n')
+    lines = text.splitlines()
+    c = '\n'
+    n = len(lines) - 1
+    for i, line in enumerate(lines):
+      if i >= n:
+        c = ''
+      encoding = self.tokenizer.encode(line + c)
       tokens.extend(encoding.ids)
     return tokens
 
