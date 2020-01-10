@@ -157,6 +157,8 @@ class HighSpeedTokenizer(object):
         c = ''
       encoding = self.tokenizer.encode(line + c)
       tokens.extend(encoding.ids)
+    if text.endswith('\n'):
+      tokens.extend(self.tokenizer.encode('\n').ids)
     return tokens
 
   def decode(self, tokens):
