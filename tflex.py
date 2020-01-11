@@ -2,12 +2,14 @@ import tensorflow as tf
 import numpy as np
 from glob import glob
 import os
+import sys
 import re
 from tensorflow.python import pywrap_tensorflow
 import tqdm
 import h5py
 import shutil
 import tempfile
+import math
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.cluster_resolver import TPUClusterResolver
@@ -72,11 +74,21 @@ def truncate_value(variable, value, reshape=True):
   params2 = np.prod(value.shape)
   if params == params2:
     return value
-  print('Truncating {} from shape {} to shape {}'.format(variable.name, value.shape, shape))
-  value = np.array(value)
-  value = value.reshape([-1])
-  value = value[0:params]
-  value = value.reshape(shape)
+  if params2 > params:
+    print('Truncating {} from shape {} to shape {}'.format(variable.name, value.shape, shape))
+    sys.stdout.flush()
+    value = np.array(value)
+    value = value.reshape([-1])
+    value = value[0:params]
+    value = value.reshape(shape)
+  else:
+    print('Expanding {} from shape {} to shape {}'.format(variable.name, value.shape, shape))
+    sys.stdout.flush()
+    value = np.array(value)
+    value = value.reshape([-1])
+    n = math.ceil(params / params2)
+    value = np.tile(value, n)
+    value = value.reshape(shape)
   return value
 
 def grab_values(variables, reader, reshape=False):

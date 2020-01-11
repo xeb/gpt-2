@@ -95,7 +95,7 @@ def interact_model(
             temperature=temperature, top_k=top_k, top_p=top_p, penalize=penalize
         )
 
-        saver = tflex.Saver()
+        saver = tflex.Saver(reshape=True)
         ckpt = tflex.latest_checkpoint(os.path.join('models', model_name))
         saver.restore(sess, ckpt)
 
