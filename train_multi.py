@@ -257,6 +257,9 @@ class TrainGPT2(object):
   def fit(self, *args, **kws):
     return tflex.trainer_fit(self, *args, **kws)
 
+  def flush(self, *args, **kws):
+    return tflex.trainer_flush(self, *args, **kws)
+
   def variables(self, index):
     return tflex.trainer_variables(self, index)
 
@@ -278,6 +281,8 @@ def trainer_fork(existing, target):
     self.sess = session
     self.init = self.init_op
     self.thread = threading.Thread(target=tflex.trainer_toplevel, args=(self,))
+    self.lock = threading.RLock()
+    self.pending_writes = []
     self.counter = self.current_step.value
     tflex.pinned_sessions.append([target, session]) # prevent GC'ing sessions, because the destructor seems to freeze.
     return self
@@ -454,6 +459,8 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
     self.start_time = time.time()
     self.prev_time = self.start_time
     self.thread = threading.Thread(target=tflex.trainer_toplevel, args=(self,))
+    self.lock = threading.RLock()
+    self.pending_writes = []
     return self
 
 tflex.trainer_create = trainer_create
@@ -667,9 +674,35 @@ def trainer_opt_apply(self, batch=None):
     #self.say('Losses (validation): %s before: %s' % (repr(losses), v_losses))
   #tflex.parallelize([0], thunk)
   thunk(0)
+  tflex.trainer_flush(self)
   return v_losses
 
 tflex.trainer_opt_apply = trainer_opt_apply
+
+def trainer_flush(self):
+  if len(self.pending_writes) > 0:
+    i = 0
+    while True:
+      i += 1
+      self.say('Flushing writes (%d)...' % i)
+      start = time.time()
+      if not tflex.trainer_flush(self):
+        break
+      elapsed = time.time() - start
+      self.say('Flushed write (%d) in %.2fs' % (i, elapsed))
+
+tflex.trainer_flush = trainer_flush
+
+def trainer_flush(self):
+  with self.lock:
+    if len(self.pending_writes) <= 0:
+      return False
+    variables, values = self.pending_writes[0]
+    self.pending_writes = self.pending_writes[1:]
+  tflex.trainer_assign_values(self, variables, values)
+  return True
+
+tflex.trainer_flush = trainer_flush
 
 def trainer_summary_log(self, v_loss):
   the = self.output['the']
@@ -999,6 +1032,12 @@ def trainer_assign_values(self, variables, values, timeout_in_ms=tflex.write_dea
 
 tflex.trainer_assign_values = trainer_assign_values
 
+def trainer_push_values(self, variables, values):
+  with self.lock:
+    self.pending_writes.append([variables, values])
+
+tflex.trainer_push_values = trainer_push_values
+
 class VariableAccumulator(object):
   pass
 
@@ -1033,6 +1072,8 @@ def trainer_slice_read(trainer, accumulator, variables):
 
 tflex.trainer_slice_read = trainer_slice_read
 
+tflex.trainer_slice_write_immediate = False
+
 def trainer_slice_write(trainer, accumulator, variables):
   values = []
   for variable in variables:
@@ -1042,7 +1083,10 @@ def trainer_slice_write(trainer, accumulator, variables):
       n = accumulator.accumcount[variable.name]
     assert(n > 0)
     values.append(value / n)
-  tflex.trainer_assign_values(trainer, variables, values)
+  if tflex.trainer_slice_write_immediate:
+    tflex.trainer_assign_values(trainer, variables, values)
+  else:
+    tflex.trainer_push_values(trainer, variables, values)
 
 tflex.trainer_slice_write = trainer_slice_write
 
