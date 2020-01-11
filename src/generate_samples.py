@@ -33,6 +33,7 @@ def is_ascii(s):
 
 def interact_model(
     model_name='117M',
+    restore_from=None,
     seed=None,
     nsamples=1,
     step=1,
@@ -96,7 +97,9 @@ def interact_model(
         )
 
         saver = tflex.Saver(reshape=True)
-        ckpt = tflex.latest_checkpoint(os.path.join('models', model_name))
+        if restore_from is None:
+          restore_from = os.path.join('models', model_name)
+        ckpt = tflex.latest_checkpoint(restore_from)
         saver.restore(sess, ckpt)
 
         while True:
