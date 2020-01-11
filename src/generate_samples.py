@@ -106,6 +106,10 @@ def interact_model(
           try:
             with open(prompt) as f:
               tflex.raw_text = f.read()
+            if tflex.raw_text.endswith('\n'):
+              tflex.raw_text = tflex.raw_text[:-1]
+            if tflex.raw_text.endswith('\r'):
+              tflex.raw_text = tflex.raw_text[:-1]
           except:
             tflex.raw_text = prompt
           tflex.raw_text = tflex.raw_text.replace('\\n', '\n')
