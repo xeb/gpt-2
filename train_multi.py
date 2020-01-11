@@ -436,7 +436,7 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       self.sess = session
       self.lr = lr
       self.wd = wd
-      self.counter = current_step.incr()
+      self.counter = current_step.value
       self.stopped = False
       self.paused = False
       self.current_step = current_step
@@ -688,7 +688,7 @@ def trainer_fit(self, ignore=False):
     ignore = True
   if not ignore:
     v_summary = tflex.trainer_summary_log(self, v_loss)
-    self.counter = self.current_step.incr()
+    self.counter = self.current_step.incr(self.args.batch_size)
     self.summary_log.add_summary(v_summary, self.counter)
     self.summary_log.flush()
     self.avg_loss = [self.avg_loss[0] * 0.99 + v_loss,
