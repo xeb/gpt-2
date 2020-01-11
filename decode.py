@@ -24,9 +24,11 @@ def main():
     enc = encoder.get_encoder(args.model_name)
     chunks = load_dataset(enc, args.in_npz, args.combine)
     for chunk in chunks:
-      text = enc.decode(chunk)
-      print(text)
-      sys.stdout.flush()
+      n = 10000
+      for i in range(len(chunk) // n + 1):
+        text = enc.decode(chunk[n*i:n*(i+1)])
+        sys.stdout.write(text)
+        sys.stdout.flush()
 
 if __name__ == '__main__':
     main()
