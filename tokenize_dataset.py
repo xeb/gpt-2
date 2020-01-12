@@ -61,16 +61,17 @@ def group(n, iterable, fillvalue=None):
     args = [iter(iterable)] * n
     return itertools.zip_longest(*args, fillvalue=fillvalue)
 
-with open(args.in_text) as f:
-  print('Reading...')
-  lines = f.readlines()
-
+import tflex_utils
 import tqdm
 import time
 start = time.time()
 optional_pair_sequence = None
 tokens = []
 if args.batch:
+  with open(args.in_text) as f:
+    print('Reading...')
+    lines = f.readlines()
+    print(repr(lines[0]))
   batches = [x for x in group(args.step, lines, fillvalue='\n')]
   for batch in tqdm.tqdm(batches):
     for encoding in tokenizer.encode_batch([x for x in batch]):
@@ -78,11 +79,9 @@ if args.batch:
       elapsed = time.time() - start
       print('%d tokens in %.4fs (%.4f tokens/sec)' % (len(tokens), elapsed, len(tokens)/elapsed))
 else:
-  i = 0
-  for line in tqdm.tqdm(lines):
+  for i, line in tflex_utils.for_each_line(args.in_text):
     encoding = tokenizer.encode(line, optional_pair_sequence)
     tokens.extend(encoding.ids)
-    i += 1
     if i % args.step == 0:
       elapsed = time.time() - start
       print('%d tokens in %.4fs (%.4f tokens/sec)' % (len(tokens), elapsed, len(tokens)/elapsed))
