@@ -468,7 +468,7 @@ def main():
                     last_saved_time = now
                 elif args.save_every > 0 and (counter % args.save_every == 0):
                     save()
-                if counter % args.sample_every == 0:
+                if args.sample_every > 0 and counter % args.sample_every == 0:
                     generate_samples()
                 if args.val_every > 0 and (counter % args.val_every == 0 or counter == 1):
                     validation()
