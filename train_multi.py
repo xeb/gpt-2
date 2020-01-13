@@ -1072,7 +1072,7 @@ def trainer_slice_read(trainer, accumulator, variables):
 
 tflex.trainer_slice_read = trainer_slice_read
 
-tflex.trainer_slice_write_immediate = False
+tflex.trainer_slice_write_immediate = False if 'TFLEX_DELAY_WRITES' in os.environ else True
 
 def trainer_slice_write(trainer, accumulator, variables):
   values = []
