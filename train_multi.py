@@ -483,7 +483,7 @@ def trainer_sample_batch(self, count=None, length=None):
         self.say('Generating %d samples of %d tokens...' % (tflex.sample_ahead, size))
         for i in tqdm.tqdm(range(0, tflex.sample_ahead, tflex.sample_step)):
           for j in range(tflex.sample_step):
-            tokens = self.sampler.sample(size)
+            tokens = tflex.data_sampler.sample(size)
             #print(repr(tokens), repr(size), len(tokens))
             if len(tokens) >= size:
               self.samples.append(tokens)
