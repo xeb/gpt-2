@@ -17,7 +17,8 @@ def load_dataset(enc, path, combine):
                 paths.append(os.path.join(dirpath, fname))
     else:
         # Assume glob
-        paths = glob.glob(path)
+        for x in path.split(','):
+          paths.extend(list(glob.glob(x)))
 
     token_chunks = []
     raw_text = ''
