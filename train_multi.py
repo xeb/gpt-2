@@ -686,14 +686,14 @@ def trainer_flush(self):
       i += 1
       self.say('Flushing writes (%d)...' % i)
       start = time.time()
-      if not tflex.trainer_flush(self):
+      if not tflex.trainer_flush_once(self):
         break
       elapsed = time.time() - start
       self.say('Flushed write (%d) in %.2fs' % (i, elapsed))
 
 tflex.trainer_flush = trainer_flush
 
-def trainer_flush(self):
+def trainer_flush_once(self):
   with self.lock:
     if len(self.pending_writes) <= 0:
       return False
@@ -702,7 +702,7 @@ def trainer_flush(self):
   tflex.trainer_assign_values(self, variables, values)
   return True
 
-tflex.trainer_flush = trainer_flush
+tflex.trainer_flush_once = trainer_flush_once
 
 def trainer_summary_log(self, v_loss):
   the = self.output['the']
