@@ -72,7 +72,11 @@ class Session(tf.Session):
       initialize_tpu(session=self, timeout_in_ms=20000)
       self.init_tpu = None
 
-def split_by_params(vs, n=20e6, f=None):
+state.split_param_count = 1e4
+
+def split_by_params(vs, n=None, f=None):
+  if n is None:
+    n = state.split_param_count
   if f is None:
     f = lambda x: np.prod(x.shape.as_list())
   i = 0
