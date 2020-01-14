@@ -551,7 +551,7 @@ def trainer_ensure(self):
     self.say('Broadcasting variables...')
     tflex.trainer_reset_variables(self, self.all_vars, timeout_in_ms=5*60000)
     self.say('Warming up...')
-    if not tflex.trainer_warmup(self):
+    if not 'TFLEX_SKIP_WARMUP' in os.env and not tflex.trainer_warmup(self):
       self.say('Warmup failed!')
       self.dead = True
       self.init = None
@@ -1207,8 +1207,8 @@ def main():
     tflex.pending_trainers = []
     tflex.pinned_trainers = []
     tflex.trainers_sema = threading.BoundedSemaphore(value=3)
-    tflex.trainers_init_sema = threading.BoundedSemaphore(value=40)
-    tflex.trainers_load_sema = threading.BoundedSemaphore(value=4)
+    tflex.trainers_init_sema = threading.BoundedSemaphore(value=200)
+    tflex.trainers_load_sema = threading.BoundedSemaphore(value=200)
     tflex.trainers_lock = threading.RLock()
     tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, sampler=tflex.data_sampler, enc=enc, target=tflex.targets[0], counter=traincounter)
     #tflex.trainer.ensure()
