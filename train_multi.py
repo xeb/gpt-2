@@ -551,7 +551,7 @@ def trainer_ensure(self):
     self.say('Broadcasting variables...')
     tflex.trainer_reset_variables(self, self.all_vars, timeout_in_ms=5*60000)
     self.say('Warming up...')
-    if not 'TFLEX_SKIP_WARMUP' in os.env and not tflex.trainer_warmup(self):
+    if not 'TFLEX_SKIP_WARMUP' in os.environ and not tflex.trainer_warmup(self):
       self.say('Warmup failed!')
       self.dead = True
       self.init = None
