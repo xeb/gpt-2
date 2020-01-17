@@ -141,6 +141,7 @@ parser.add_argument('--save_graph', default=False, action='store_true', help="Sa
 
 parser.add_argument('--device', type=int, default=-1, help='device to use.')
 parser.add_argument('--no_averaging', default=False, action='store_true')
+parser.add_argument('--coreless', default=False, action='store_true')
 
 PST = pytz.timezone('US/Pacific')
 
@@ -373,7 +374,7 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
       #    labels=context[:, 1:], logits=output['logits'][:, :-1]))
       #if hparams.dtype == tf.bfloat16:
       #  loss = tf.cast(loss, tf.float32)
-      output = model.shard(batch_size=args.batch_size, hparams=hparams, noise=args.noise, learning_rate=lr, optimizer=args.optimizer, only_train_transformer_layers=args.only_train_transformer_layers, colocate_gradients_with_ops=args.colocate_gradients, colocate_sum=args.colocate_sum, use_memory_saving_gradients=args.memory_saving_gradients, ungate_gradients=args.ungate_gradients,max_cores=args.max_cores, skip_cores=args.skip_cores, devices=devices)
+      output = model.shard(batch_size=args.batch_size, hparams=hparams, noise=args.noise, learning_rate=lr, optimizer=args.optimizer, only_train_transformer_layers=args.only_train_transformer_layers, colocate_gradients_with_ops=args.colocate_gradients, colocate_sum=args.colocate_sum, use_memory_saving_gradients=args.memory_saving_gradients, ungate_gradients=args.ungate_gradients,max_cores=-1 if args.coreless else args.max_cores, skip_cores=args.skip_cores, devices=devices)
       #use_locking=False
       #if args.optimizer == 'adam':
       #  opt = tf.train.AdamOptimizer(learning_rate=lr, use_locking=use_locking)

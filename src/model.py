@@ -408,7 +408,9 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
         devices = devices[2:2+8]
       cores = [x.name for x in devices[skip_cores:]]
       num_cores = len(cores)
-      if max_cores is not None:
+      if max_cores < 0:
+        num_core = 1
+      elif max_cores is not None:
         if num_cores > max_cores:
           num_cores = max_cores
       if num_cores > batch_size:
@@ -424,8 +426,8 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
         with graph.as_default():
           return make_shard_1(i)
       def make_shard_1(i):
-        core = cores[i]
-        prefix = 'core%04d' % i
+        core = cores[i] if i >= 0 else None
+        prefix = ('core%04d' % i) if i >= 0 else None
         #context = contexts[i]
         #context = tf.placeholder(tf.int32, [batch_size // num_cores, None])
         #context_in = randomize(context, hparams, noise)
@@ -452,8 +454,11 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
           #if hparams.dtype != tf.float32:
           #    loss = tf.cast(loss, tf.float32)
 
-        global_vars = [v for v in tf.global_variables() if v.name.startswith(prefix + '/' + scope + '/')]
-        all_vars = [v for v in tf.trainable_variables() if v.name.startswith(prefix + '/' + scope + '/')]
+        path = scope
+        if prefix is not None:
+          path = prefix + '/' + path
+        global_vars = [v for v in tf.global_variables() if v.name.startswith(path + '/')]
+        all_vars = [v for v in tf.trainable_variables() if v.name.startswith(path + '/')]
         def should_train_variable(v):
           if only_train_transformer_layers:
             if '/h' not in v.name and '/ln_f' not in v.name:
@@ -468,7 +473,7 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
         train_vars = [v for v in all_vars if should_train_variable(v)]
 
         parameter_count = sum([np.prod(v.shape.as_list()) for v in train_vars])
-        print("Shard %d is using %d parameters (%.2fM) (scope='%s/')" % (i, parameter_count, parameter_count/(1024.0*1024.0), prefix + '/' + scope))
+        print("Shard %d is using %d parameters (%.2fM) (scope='%s/')" % (i, parameter_count, parameter_count/(1024.0*1024.0), path))
 
         with tf.device(core), bfloat16context(hparams), tf.variable_scope(prefix, reuse=tf.AUTO_REUSE):
           if optimizer == 'adam':
