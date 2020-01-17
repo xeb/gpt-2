@@ -409,7 +409,7 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
       cores = [x.name for x in devices[skip_cores:]]
       num_cores = len(cores)
       if max_cores < 0:
-        num_core = 1
+        num_cores = 1
       elif max_cores is not None:
         if num_cores > max_cores:
           num_cores = max_cores
@@ -417,6 +417,8 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
         num_cores = batch_size
       assert(num_cores > 0)
       cores = cores[:num_cores]
+      if max_cores < 0:
+        cores = [None]
       #if num_cores <= 0:
       #  return model(hparams, X, scope=scope, *args, **kws)
       print('Sharding across %d cores' % len(cores))
@@ -426,8 +428,8 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
         with graph.as_default():
           return make_shard_1(i)
       def make_shard_1(i):
-        core = cores[i] if i >= 0 else None
-        prefix = ('core%04d' % i) if i >= 0 else None
+        core = cores[i]
+        prefix = 'core%04d' % i
         #context = contexts[i]
         #context = tf.placeholder(tf.int32, [batch_size // num_cores, None])
         #context_in = randomize(context, hparams, noise)
