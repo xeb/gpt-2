@@ -9,6 +9,7 @@ import h5py
 import shutil
 import tempfile
 import traceback
+import math
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.cluster_resolver import TPUClusterResolver
