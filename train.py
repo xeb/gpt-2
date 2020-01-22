@@ -267,6 +267,12 @@ def main():
         opt_gather = the.opt_gather
         opt_train = the.opt_train
 
+        def trainer_reset_variables(variables):
+          ops = [the.reset_var[v.name] for v in variables]
+          tflex.sess.run(ops)
+
+        tflex.trainer_reset_variables = trainer_reset_variables
+
         #val_context = tf.placeholder(tf.int32, [args.val_batch_size, None])
         val_context = tf.Variable(tf.zeros(shape=[args.val_batch_size, args.sample_ctx], dtype=tf.int32), dtype=tf.int32, name="val_context")
         val_output = model.model(hparams=hparams, X=val_context)
@@ -384,6 +390,8 @@ def main():
             #sess.run(tflex.init_op)
             with sess.graph.as_default():
               sess.run(tf.global_variables_initializer())
+            print('Broadcasting variables...')
+            tflex.trainer_reset_variables(self.all_vars)
             #with sess.as_default():
             #  sess.ensure()
             print(target, 'reopen: reopening log')
@@ -425,6 +433,8 @@ def main():
           t0 = time.time()
           if not args.fresh_model:
               tflex.saver.restore(tflex.sess, ckpt)
+          print('Broadcasting variables...')
+          tflex.trainer_reset_variables(all_vars)
           t1 = time.time()
           print('Loaded in %f seconds' % (t1 - t0))
 
