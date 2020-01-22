@@ -77,6 +77,7 @@ def interact_model(
           restore_from = os.path.join('models', model_name)
         ckpt = tflex.latest_checkpoint(restore_from)
         saver.restore(sess, ckpt)
+        print('Loaded snapshot', ckpt)
 
         while True:
             if prompt is not None:
