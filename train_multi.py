@@ -681,16 +681,17 @@ def trainer_opt_apply(self, batch=None):
 tflex.trainer_opt_apply = trainer_opt_apply
 
 def trainer_flush(self):
-  if len(self.pending_writes) > 0:
+  n = len(self.pending_writes)
+  if n > 0:
+    self.say('Flushing %d writes...' % n)
+    start = time.time()
     i = 0
     while True:
       i += 1
-      self.say('Flushing writes (%d)...' % i)
-      start = time.time()
       if not tflex.trainer_flush_once(self):
         break
-      elapsed = time.time() - start
-      self.say('Flushed write (%d) in %.2fs' % (i, elapsed))
+    elapsed = time.time() - start
+    self.say('Flushed %d writes in %.2fs' % (i, elapsed))
 
 tflex.trainer_flush = trainer_flush
 
