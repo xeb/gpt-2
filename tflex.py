@@ -602,14 +602,6 @@ def should_quit():
   return _quit
 
 @register_command
-def save_and_quit():
-  global _quit
-  if has_command('save'):
-    print("Saving...")
-    run_command('save')
-  quit()
-
-@register_command
 def throw_exception():
   raise Exception("This exception should be caught and logged by the tflex command system")
 
