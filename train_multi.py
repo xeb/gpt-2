@@ -634,10 +634,10 @@ def trainer_feed(self, batch):
 
 tflex.trainer_feed = trainer_feed
 
-tflex.train_timeout = 600000
-tflex.gather_timeout = 30000
-tflex.broadcast_timeout = 30000
-tflex.loss_timeout = 30000
+tflex.train_timeout = 1500000
+tflex.gather_timeout = 300000
+tflex.broadcast_timeout = 300000
+tflex.loss_timeout = 3600000
 
 def trainer_opt_apply(self, batch=None):
   if batch is None:
@@ -662,9 +662,9 @@ def trainer_opt_apply(self, batch=None):
     #self.sess.run(opt_gather, options=config_pb2.RunOptions(timeout_in_ms=tflex.gather_timeout))
     #self.say('Running opt_broadcast...')
     #self.sess.run(opt_broadcast, options=config_pb2.RunOptions(timeout_in_ms=tflex.broadcast_timeout))
-    self.say('Running opt_losses...')
-    v_losses = self.sess.run(opt_losses, options=config_pb2.RunOptions(timeout_in_ms=tflex.loss_timeout))
-    self.say('Loss deltas: %s' % (repr([x-y for x, y in zip(v_losses, losses)])))
+    #self.say('Running opt_losses...')
+    #v_losses = self.sess.run(opt_losses, options=config_pb2.RunOptions(timeout_in_ms=tflex.loss_timeout))
+    #self.say('Loss deltas: %s' % (repr([x-y for x, y in zip(v_losses, losses)])))
     #batch_size = len(batch)
     #num_cores = len(shards)
     #assert(len(batch) % num_cores == 0)
