@@ -894,6 +894,48 @@ def print_trainers(trainers=None):
 tflex.print_trainers = print_trainers
 
 @tflex.register_command
+def learning_rate_increase_5_percent():
+  tflex.args.learning_rate *= 1.5
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
+
+tflex.learning_rate_increase_5_percent = learning_rate_increase_5_percent
+
+@tflex.register_command
+def learning_rate_decrease_5_percent():
+  tflex.args.learning_rate /= 1.5
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
+
+tflex.learning_rate_decrease_5_percent = learning_rate_decrease_5_percent
+
+@tflex.register_command
+def learning_rate_increase_10_percent():
+  tflex.args.learning_rate *= 1.10
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
+
+tflex.learning_rate_increase_10_percent = learning_rate_increase_10_percent
+
+@tflex.register_command
+def learning_rate_decrease_10_percent():
+  tflex.args.learning_rate /= 1.10
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
+
+tflex.learning_rate_decrease_10_percent = learning_rate_decrease_10_percent
+
+@tflex.register_command
+def learning_rate_increase_20_percent():
+  tflex.args.learning_rate *= 1.20
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
+
+tflex.learning_rate_increase_20_percent = learning_rate_increase_20_percent
+
+@tflex.register_command
+def learning_rate_decrease_20_percent():
+  tflex.args.learning_rate /= 1.20
+  print('learning rate now %2.9f' % tflex.args.learning_rate)
+
+tflex.learning_rate_decrease_20_percent = learning_rate_decrease_20_percent
+
+@tflex.register_command
 def learning_rate_increase_2x():
   tflex.args.learning_rate *= 2
   print('learning rate now %2.9f' % tflex.args.learning_rate)
