@@ -1250,9 +1250,9 @@ def main():
     tflex.trainers = []
     tflex.pending_trainers = []
     tflex.pinned_trainers = []
-    tflex.trainers_sema = threading.BoundedSemaphore(value=60)
-    tflex.trainers_init_sema = threading.BoundedSemaphore(value=60)
-    tflex.trainers_load_sema = threading.BoundedSemaphore(value=60)
+    tflex.trainers_sema = threading.BoundedSemaphore(value=400)
+    tflex.trainers_init_sema = threading.BoundedSemaphore(value=400)
+    tflex.trainers_load_sema = threading.BoundedSemaphore(value=50)
     tflex.trainers_lock = threading.RLock()
     tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, sampler=tflex.data_sampler, enc=enc, target=tflex.targets[0], counter=traincounter)
     #tflex.trainer.ensure()
