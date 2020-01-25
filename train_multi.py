@@ -635,8 +635,8 @@ def trainer_feed(self, batch):
 tflex.trainer_feed = trainer_feed
 
 tflex.train_timeout = 1500000
-tflex.gather_timeout = 300000
-tflex.broadcast_timeout = 300000
+tflex.gather_timeout = 240000
+tflex.broadcast_timeout = 240000
 tflex.loss_timeout = 3600000
 
 def trainer_opt_apply(self, batch=None):
@@ -1208,8 +1208,8 @@ def main():
     tflex.pending_trainers = []
     tflex.pinned_trainers = []
     tflex.trainers_sema = threading.BoundedSemaphore(value=3)
-    tflex.trainers_init_sema = threading.BoundedSemaphore(value=200)
-    tflex.trainers_load_sema = threading.BoundedSemaphore(value=200)
+    tflex.trainers_init_sema = threading.BoundedSemaphore(value=40)
+    tflex.trainers_load_sema = threading.BoundedSemaphore(value=40)
     tflex.trainers_lock = threading.RLock()
     tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, sampler=tflex.data_sampler, enc=enc, target=tflex.targets[0], counter=traincounter)
     #tflex.trainer.ensure()
