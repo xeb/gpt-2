@@ -553,7 +553,11 @@ def utc():
     import calendar
     return calendar.timegm(d.utctimetuple())
 
+state.no_heartbeat = True
+
 def heartbeat():
+  if state.no_heartbeat:
+    return
   pongfile=os.environ['PONG'] if 'PONG' in os.environ else 'pong.txt'
   with open(pongfile, "a+") as f:
     nonce = os.urandom(8).hex()
