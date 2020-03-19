@@ -64,8 +64,9 @@ def for_each_line(f, total=None, verbose=True, ignore_errors=True, message=None)
         i += 1
     else:
       prev = None
-      pos = 0
       size = file_size(f)
+      pos = 0
+      prev_pos = 0
       n = 0
       while True:
         try:
@@ -74,8 +75,9 @@ def for_each_line(f, total=None, verbose=True, ignore_errors=True, message=None)
               yield i, line
               i += 1
               pos += len(line)
-              pbar.moveto(pos)
+              pbar.update(pos - prev_pos)
               prev = line
+              prev_pos = pos
             break
         except UnicodeDecodeError:
           n += 1
