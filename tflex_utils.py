@@ -150,6 +150,9 @@ def tokens_to_file(out, chunks, stride):
 def tokens_from_file(f, stride):
   if isinstance(f, gfile.GFile):
     return tokens_from_buffer(f, stride)
+  if isinstance(f, str) and f.startswith('gs://'):
+    with gfile.GFile(f, 'rb') as f:
+      return tokens_from_file(f, stride)
   assert stride in [2, 4]
   return np.fromfile(f, dtype=np.uint16 if stride == 2 else np.int32)
 
