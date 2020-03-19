@@ -24,7 +24,7 @@ def count_lines(infile):
     n = 0
     prev = None
     size = file_size(infile)
-    infile.seek(0, 0)
+    assert infile.tell() == 0
     prev_pos = 0
     update_time = time.time() + 1.0
     with tqdm.tqdm(total=size, desc="Counting lines in text file...") as pbar:
