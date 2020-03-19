@@ -1,9 +1,10 @@
 import tqdm
 import sys
+from tensorflow import gfile
 
 def count_lines(infile):
     if isinstance(infile, str):
-      with open(infile) as f:
+      with gfile.FastGFile(infile) as f:
         return count_lines(f)
     n = 0
     prev = None
@@ -23,7 +24,7 @@ def count_lines(infile):
 
 def for_each_line(infile, total=None, verbose=True, ignore_errors=True, message=None):
     if isinstance(infile, str):
-      with open(infile) as f:
+      with gfile.FastGFile(infile) as f:
         for i, line in for_each_line(f, total=total, verbose=verbose, ignore_errors=ignore_errors, message=message):
           yield i, line
     #import pdb; pdb.set_trace()
@@ -52,7 +53,7 @@ import time
 def ensure_open(filename, *args, **kws):
   while True:
     try:
-      return open(filename, *args, **kws)
+      return gfile.FastGFile(filename, *args, **kws)
     except Exception as exc:
       if not isinstance(exc, FileNotFoundError):
         import traceback
