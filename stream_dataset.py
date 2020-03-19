@@ -39,39 +39,39 @@ def main():
     chunks = load_dataset(enc, args.in_npz, args.combine) if args.in_npz.endswith('.npz') else args.in_npz
     streamer = TokenStreamer(chunks, enc=enc)
     text_mode = not isinstance(chunks, list)
+    output_text_mode = args.out_tok == '-' 
     total_size = sum([len(x) for x in chunks]) if not text_mode else streamer.line_count
-    assert args.out_tok.endswith('.tok16') or args.out_tok.endswith('.tok32')
+    if not output_text_mode:
+      assert args.out_tok.endswith('.tok16') or args.out_tok.endswith('.tok32')
     half = args.out_tok.endswith('.tok16')
-    desc = ("Required filesize: %.2f MB" % ((2 if half else 4) * total_size / 1024 / 1024)) if not text_mode else None
+    stride = (2 if half else 4)
+    desc = ("Required filesize: %.2f MB (%d bytes)" % (stride * total_size / 1024 / 1024, stride * total_size)) if not text_mode else None
     reopen_time = time.time()
     with (tqdm.tqdm(ncols=100, desc=desc, total=total_size, unit_scale=True) if not text_mode else nullcontext()) as pbar:
       with (nullcontext() if args.out_tok == '-' else open(args.out_tok, "ab" if args.append else "wb")) as f:
         i = 0
         for chunk in streamer.stream():
           #import pdb; pdb.set_trace()
-          for token in chunk:
-            if i % 1024 == 0 and i > 0:
-              if args.out_tok == '-':
+          if i % 1024 == 0 and i > 0:
+            if f is not None:
+              f.flush()
+          if f is not None:
+            if time.time() - reopen_time > args.reopen_every:
+              f.close()
+              f = tflex_utils.ensure_open(args.out_tok, "ab")
+              reopen_time = time.time()
+          if args.out_tok == '-':
+            for token in chunk:
+              sys.stdout.write('%d ' % token)
+              i += 1
+              if i % 16 == 0 and i > 0:
                 sys.stdout.write('\n')
                 sys.stdout.flush()
-              if f is not None:
-                f.flush()
-            if f is not None:
-              if time.time() - reopen_time > args.reopen_every:
-                f.close()
-                f = tflex_utils.ensure_open(args.out_tok, "ab")
-                reopen_time = time.time()
-            i += 1
-            if args.out_tok == '-':
-              sys.stdout.write('%d ' % token)
-            else:
-              if half:
-                assert token >= 0 and token < 65536
-              else:
-                pass # TODO: assert integer limits
-              f.write(struct.pack('<H' if half else '<i', token))
-            if not text_mode:
-              pbar.update(1)
+          else:
+            tflex_utils.tokens_to_file(f, [chunk], stride=stride)
+          if not text_mode:
+            pbar.update(len(chunk))
+          i += 1
 
 if __name__ == '__main__':
     main()
