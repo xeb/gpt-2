@@ -48,7 +48,7 @@ def main():
     desc = ("Required filesize: %.2f MB (%d bytes)" % (stride * total_size / 1024 / 1024, stride * total_size)) if not text_mode else None
     reopen_time = time.time()
     with (tqdm.tqdm(ncols=100, desc=desc, total=total_size, unit_scale=True) if not text_mode else nullcontext()) as pbar:
-      with (nullcontext() if args.out_tok == '-' else open(args.out_tok, "ab" if args.append else "wb")) as f:
+      with (nullcontext() if args.out_tok == '-' else tflex_utils.try_open(args.out_tok, "ab" if args.append else "wb")) as f:
         i = 0
         for chunk in streamer.stream():
           #import pdb; pdb.set_trace()

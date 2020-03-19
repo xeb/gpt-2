@@ -68,7 +68,7 @@ start = time.time()
 optional_pair_sequence = None
 tokens = []
 if args.batch:
-  with open(args.in_text) as f:
+  with tflex_utils.try_open(args.in_text) as f:
     print('Reading...')
     lines = f.readlines()
     print(repr(lines[0]))
