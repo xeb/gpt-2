@@ -342,7 +342,6 @@ def main():
           if os.path.isdir(dataset) or dataset.endswith('.npz'):
             chunks = load_dataset(enc, dataset, combine)
             data_sampler = Sampler(chunks, seed=seed)
-            print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
           elif dataset.endswith('.tok16'):
             data_sampler = TokenSampler(dataset, enc, seed=seed, half=True)
           elif dataset.endswith('.tok32'):

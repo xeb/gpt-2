@@ -25,9 +25,12 @@ def load_dataset(enc, path, combine):
     for path in tqdm.tqdm(paths):
         if path.endswith('.npz'):
             # Pre-encoded
+            n = 0
             with np.load(path) as npz:
                 for item in npz.files:
                     token_chunks.append(npz[item])
+                    n += np.prod(npz[item].shape)
+                sys.stderr.write('dataset has %d tokens across %d chunks\n' % (n, len(npz.files)))
         else:
             # Plain text
             with open(path, 'r') as fp:
