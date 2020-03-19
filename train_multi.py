@@ -274,7 +274,7 @@ def trainer_fork(existing, target):
       setattr(self, k, v)
     session = tflex.Session(target=target, graph=existing.sess.graph, config=existing.sess.config)
     if self.args.init_tpu:
-      print('Initializing TPU...', session.target)
+      print('Initializing TPU...', target)
       config = config_pb2.ConfigProto(operation_timeout_in_ms=tflex.tpu_init_timeout)
       with tf.Session(target=target, graph=tf.Graph(), config=config) as sess:
         with sess.graph.as_default():
@@ -347,7 +347,7 @@ def trainer_create(args, hparams, enc, scope='model', target='auto', timeout=tfl
     with tf.Session(target=target, graph=tf.Graph(), config=config) as sess:
       with sess.graph.as_default():
         if args.init_tpu:
-          print('Initializing TPU...', session.target)
+          print('Initializing TPU...', target)
           sess.run(tf.contrib.tpu.initialize_system(), options=config_pb2.RunOptions(timeout_in_ms=tflex.tpu_init_timeout))
         devices = sess.list_devices()
     #devices = tflex.get_cores(session=session)
@@ -1270,15 +1270,19 @@ def main():
     tflex.trainers_init_sema = threading.BoundedSemaphore(value=6) # 150
     tflex.trainers_load_sema = threading.BoundedSemaphore(value=6) # 10
     tflex.trainers_lock = threading.RLock()
-    while True:
-      for target in tqdm.tqdm(tflex.targets, desc="Initializing first TPU..."):
-        try:
-          tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, enc=tflex.enc, target=target, counter=traincounter)
-          break
-        except:
-          import traceback
-          traceback.print_exc()
-          time.sleep(0.1)
+    tflex.trainer = None
+    while tflex.trainer is None:
+      with tqdm.tqdm(total=1) as pbar:
+        for target in tflex.targets:
+          pbar.set_description("Initiaializing first TPU using target %s" % target)
+          try:
+            tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, enc=tflex.enc, target=target, counter=traincounter)
+            pbar.update(1)
+            break
+          except:
+            import traceback
+            traceback.print_exc()
+            time.sleep(0.1)
     #tflex.trainer.ensure()
     #if not tflex.trainer.thread.is_alive():
     #  tflex.trainer.thread.start()
