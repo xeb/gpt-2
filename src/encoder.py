@@ -109,14 +109,14 @@ class Encoder:
 
 try:
   from tokenizers import Tokenizer, models, pre_tokenizers, decoders
+  import sys
   use_high_speed_tokenizer = True
-  print('Using high-speed tokenizer')
+  sys.stderr.write('Using high-speed tokenizer\n')
 except:
   use_high_speed_tokenizer = False
 
 class HighSpeedTokenizer(object):
-  def __init__(self, encoder, vocab_path, bpe_merges_path):
-    self.encoder = encoder
+  def __init__(self, vocab_path, bpe_merges_path):
     tokenizer = Tokenizer(models.BPE.from_files(vocab_path, bpe_merges_path))
     # Use the byte level
     add_prefix_spaces = False # Whether to automatically prefix the sequences with a space if none found
@@ -158,6 +158,8 @@ class HighSpeedTokenizer(object):
         c = ''
       encoding = self.tokenizer.encode(line + c)
       tokens.extend(encoding.ids)
+    if text.endswith('\n'):
+      tokens.extend(self.tokenizer.encode('\n').ids)
     return tokens
 
   def decode(self, tokens):
@@ -167,10 +169,10 @@ class HighSpeedTokenizer(object):
 def get_encoder(model_name):
     vocab_path = os.path.join('models', model_name, 'encoder.json')
     bpe_merges_path = os.path.join('models', model_name, 'vocab.bpe')
+    if use_high_speed_tokenizer:
+      return HighSpeedTokenizer(vocab_path=vocab_path, bpe_merges_path=bpe_merges_path)
     with open(vocab_path, 'r') as f:
         encoder = json.load(f)
-    if use_high_speed_tokenizer:
-      return HighSpeedTokenizer(encoder, vocab_path=vocab_path, bpe_merges_path=bpe_merges_path)
     with open(bpe_merges_path, 'r', encoding="utf-8") as f:
         bpe_data = f.read()
     bpe_merges = [tuple(merge_str.split()) for merge_str in bpe_data.split('\n')[1:-1]]

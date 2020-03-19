@@ -20,7 +20,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.framework.errors_impl import InvalidArgumentError, AbortedError, DeadlineExceededError
 
 import model, sample, encoder
-from load_dataset import load_dataset, Sampler, TextSampler
+from load_dataset import load_dataset, Sampler, TextSampler, TokenSampler
 from accumulate import AccumulatingOptimizer
 import memory_saving_gradients
 from glob import glob
@@ -1225,7 +1225,13 @@ def main():
       if os.path.isdir(dataset) or dataset.endswith('.npz'):
         chunks = load_dataset(enc, dataset, combine)
         data_sampler = Sampler(chunks, seed=seed)
-        print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
+      elif dataset.endswith('.tok16'):
+        data_sampler = TokenSampler(dataset, enc, seed=seed, half=True)
+      elif dataset.endswith('.tok32'):
+        data_sampler = TokenSampler(dataset, enc, seed=seed, half=False)
+      elif dataset.endswith('.tok'):
+        assert not dataset.endswith('.tok')
+        #data_sampler = TokenSampler(dataset, enc, seed=seed, half=False)
       else:
         data_sampler = TextSampler(dataset, enc, seed=seed, use_locking=True)
       return data_sampler
