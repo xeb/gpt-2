@@ -1265,7 +1265,15 @@ def main():
     tflex.trainers_init_sema = threading.BoundedSemaphore(value=6) # 150
     tflex.trainers_load_sema = threading.BoundedSemaphore(value=6) # 10
     tflex.trainers_lock = threading.RLock()
-    tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, enc=tflex.enc, target=tflex.targets[0], counter=traincounter)
+    while True:
+      for target in tqdm.tqdm(tflex.targets, desc="Initializing first TPU..."):
+        try:
+          tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, enc=tflex.enc, target=target, counter=traincounter)
+          break
+        except:
+          import traceback
+          traceback.print_exc()
+          time.sleep(0.1)
     #tflex.trainer.ensure()
     #if not tflex.trainer.thread.is_alive():
     #  tflex.trainer.thread.start()
