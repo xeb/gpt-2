@@ -19,14 +19,14 @@ def count_lines(infile):
     n = 0
     prev = None
     size = file_size(infile)
-    prev = infile.tell()
+    prev_pos = infile.tell()
     with tqdm.tqdm(total=size, desc="Counting lines in text file...") as pbar:
       while True:
         try:
           for line in infile:
             pos = infile.tell()
-            pbar.update(pos - prev)
-            prev = pos
+            pbar.update(pos - prev_pos)
+            prev_pos = pos
             n += 1
             prev = line
             #print(n)
