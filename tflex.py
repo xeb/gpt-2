@@ -65,7 +65,7 @@ class Session(tf.Session):
     self.target = target
     self.config = config
 
-class MonitoredSession(tf.MonitoredSession):
+class MonitoredSession(tf.train.MonitoredSession):
   def __init__(self, target='auto', graph=None, config=None):
     target = get_session_target(target)
     super().__init__(target, graph=graph, config=config)
