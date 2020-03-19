@@ -5,7 +5,7 @@ import time
 
 def file_size(infile):
   if isinstance(infile, str):
-    with gfile.FastGFile(infile) as f:
+    with try_open(infile) as f:
       return file_size(f)
   if isinstance(infile, gfile.FastGFile):
     return infile.size()
@@ -15,7 +15,7 @@ def file_size(infile):
 
 def count_lines(infile):
     if isinstance(infile, str):
-      with gfile.FastGFile(infile) as f:
+      with try_open(infile) as f:
         return count_lines(f)
     n = 0
     prev = None
@@ -44,7 +44,7 @@ def count_lines(infile):
 
 def for_each_line(infile, total=None, verbose=True, ignore_errors=True, message=None):
     if isinstance(infile, str):
-      with gfile.FastGFile(infile) as f:
+      with try_open(infile) as f:
         for i, line in for_each_line(f, total=total, verbose=verbose, ignore_errors=ignore_errors, message=message):
           yield i, line
     #import pdb; pdb.set_trace()
@@ -70,10 +70,16 @@ def for_each_line(infile, total=None, verbose=True, ignore_errors=True, message=
 
 import time
 
+def try_open(filename, *args, **kws):
+  if filename.startswith("gs://"):
+    return gfile.FastGFile(filename, *args, **kws)
+  else:
+    return open(filename, *args, **kws)
+
 def ensure_open(filename, *args, **kws):
   while True:
     try:
-      return gfile.FastGFile(filename, *args, **kws)
+      return try_open(filename, *args, **kws)
     except Exception as exc:
       if not isinstance(exc, FileNotFoundError):
         import traceback
