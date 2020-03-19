@@ -59,19 +59,18 @@ def get_session_target(target='auto'):
     return target
 
 class Session(tf.Session):
-  def __init__(self, target='auto', graph=None, config=None, init_tpu=False):
+  def __init__(self, target='auto', graph=None, config=None):
     target = get_session_target(target)
     super().__init__(target, graph=graph, config=config)
-    self.init_tpu=init_tpu
     self.target = target
     self.config = config
 
-  def ensure(self):
-    if self.init_tpu:
-      print("Initializing TPU...")
-      #sess.run(tpu.initialize_system())
-      initialize_tpu(session=self, timeout_in_ms=20000)
-      self.init_tpu = None
+class MonitoredSession(tf.MonitoredSession):
+  def __init__(self, target='auto', graph=None, config=None):
+    target = get_session_target(target)
+    super().__init__(target, graph=graph, config=config)
+    self.target = target
+    self.config = config
 
 state.split_param_count = 1e4
 
