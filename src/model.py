@@ -413,9 +413,8 @@ def shard(batch_size, hparams, learning_rate=0.0001, optimizer='sgd', noise=0.0,
       elif max_cores is not None:
         if num_cores > max_cores:
           num_cores = max_cores
-      if num_cores > batch_size:
-        num_cores = batch_size
-      assert(num_cores > 0)
+      assert num_cores % batch_size == 0
+      assert num_cores > 0
       cores = cores[:num_cores]
       if max_cores < 0:
         cores = [None]
