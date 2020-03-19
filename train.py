@@ -15,7 +15,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 
 import model, sample, encoder
-from load_dataset import load_dataset, Sampler, TextSampler
+from load_dataset import load_dataset, Sampler, TextSampler, TokenSampler
 from accumulate import AccumulatingOptimizer
 import memory_saving_gradients
 from glob import glob
@@ -343,6 +343,13 @@ def main():
             chunks = load_dataset(enc, dataset, combine)
             data_sampler = Sampler(chunks, seed=seed)
             print('dataset has', data_sampler.total_size, 'tokens', len(chunks), 'chunks')
+          elif dataset.endswith('.tok16'):
+            data_sampler = TokenSampler(dataset, enc, seed=seed, half=True)
+          elif dataset.endswith('.tok32'):
+            data_sampler = TokenSampler(dataset, enc, seed=seed, half=False)
+          elif dataset.endswith('.tok'):
+            assert not dataset.endswith('.tok')
+            #data_sampler = TokenSampler(dataset, enc, seed=seed, half=False)
           else:
             data_sampler = TextSampler(dataset, enc, seed=seed)
           return data_sampler
@@ -448,11 +455,13 @@ def main():
                 sample = data_sampler.sample(args.sample_ctx)
                 end = time.time()
                 elapsed = (end - start)
-                r += [sample]
+                if sample is not None:
+                  r += [sample]
                 times += [elapsed]
             total = sum(times)
             avg = total / len(times)
             #say('Sampled %d batches in %.4f seconds (avg per batch: %.4f)' % (args.batch_size, total, avg))
+            assert len(r) > 0
             return r
 
         prev_time = time.time()
