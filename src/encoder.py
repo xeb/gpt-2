@@ -109,8 +109,9 @@ class Encoder:
 
 try:
   from tokenizers import Tokenizer, models, pre_tokenizers, decoders
+  import sys
   use_high_speed_tokenizer = True
-  print('Using high-speed tokenizer')
+  sys.stderr.write('Using high-speed tokenizer\n')
 except:
   use_high_speed_tokenizer = False
 
