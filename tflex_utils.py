@@ -2,24 +2,40 @@ import tqdm
 import sys
 from tensorflow import gfile
 
+def file_size(infile):
+  if isinstance(infile, str):
+    with gfile.FastGFile(infile) as f:
+      return file_size(f)
+  if isinstance(infile, gfile.FastGFile):
+    return infile.size()
+  else:
+    infile.seek(0, 2)
+    return infile.tell()
+
 def count_lines(infile):
     if isinstance(infile, str):
       with gfile.FastGFile(infile) as f:
         return count_lines(f)
     n = 0
     prev = None
-    while True:
-      try:
-        for line in infile:
-          n += 1
-          prev = line
-          #print(n)
-        break
-      except UnicodeDecodeError:
-        if verbose:
-          sys.stderr.write('Error on line %d after %s\n' % (n+1, repr(prev)))
-        if not ignore_errors:
-          raise
+    size = file_size(infile)
+    prev = infile.tell()
+    with tqdm.tqdm(total=size, desc="Counting lines in text file...") as pbar:
+      while True:
+        try:
+          for line in infile:
+            pos = infile.tell()
+            pbar.update(pos - prev)
+            prev = pos
+            n += 1
+            prev = line
+            #print(n)
+          break
+        except UnicodeDecodeError:
+          if verbose:
+            sys.stderr.write('Error on line %d after %s\n' % (n+1, repr(prev)))
+          if not ignore_errors:
+            raise
     return n
 
 def for_each_line(infile, total=None, verbose=True, ignore_errors=True, message=None):

@@ -213,8 +213,7 @@ class TokenSampler(object):
     if self.fp is None:
       #print('Opening token file: ' + self.infile)
       self.fp = tflex_utils.ensure_open(self.infile, 'rb')
-    self.fp.seek(0, 2)
-    total_size = self.fp.tell()
+    total_size = tflex_utils.file_size(self.fp)
     if self.verbose and self.last_total_size != total_size:
       sys.stderr.write('%d tokens in token file %s\n' % (total_size // self.stride, self.infile))
       self.last_total_size = total_size
