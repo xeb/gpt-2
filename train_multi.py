@@ -790,8 +790,6 @@ def trainer_alive(trainer):
       return False
   if not trainer.thread.is_alive():
     return False
-  if trainer.sess.should_stop():
-    return False
   return True
 
 tflex.trainer_alive = trainer_alive
