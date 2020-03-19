@@ -7,19 +7,18 @@ import sys
 import tflex_utils
 
 def load_dataset(enc, path, combine):
-    paths = []
-    if os.path.isfile(path):
+    if tflex_utils.isfile(path):
         # Simple file
-        paths.append(path)
-    elif os.path.isdir(path):
+        paths = [path]
+    elif tflex_utils.isdir(path):
         # Directory
+        paths = []
         for (dirpath, _, fnames) in os.walk(path):
             for fname in fnames:
                 paths.append(os.path.join(dirpath, fname))
     else:
         # Assume glob
-        for x in path.split(','):
-          paths.extend(list(glob.glob(x)))
+        paths = tflex_utils.glob(path)
 
     token_chunks = []
     raw_text = ''
@@ -32,6 +31,9 @@ def load_dataset(enc, path, combine):
                     token_chunks.append(npz[item])
                     n += np.prod(npz[item].shape)
                 sys.stderr.write('dataset has %d tokens across %d chunks\n' % (n, len(npz.files)))
+        elif path.endswith('.tok16') or path.endswith('.tok32'):
+          tokens = tflex_utils.tokens_from_file(path, stride=2 if path.endswith('.tok16') else 4)
+          token_chunks.append(tokens)
         else:
             # Plain text
             with open(path, 'r') as fp:

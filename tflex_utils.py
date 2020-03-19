@@ -1,13 +1,30 @@
 import tqdm
 import sys
-from tensorflow import gfile
+from tensorflow import io
 import time
+
+def isfile(f):
+  return io.gfile.exists(f) and not io.gfile.isdir(f)
+
+def exists(f):
+  return io.gfile.exists(f)
+
+def isdir(f):
+  return io.gfile.isdir(f)
+
+def glob(patterns):
+  if isinstance(patterns, str):
+    patterns = patterns.split(',')
+  paths = []
+  for pattern in patterns:
+    paths.extend(io.gfile.glob(pattern))
+  return paths
 
 def file_size(f):
   if isinstance(f, str):
     with try_open(f) as f:
       return file_size(f)
-  if isinstance(f, gfile.FastGFile):
+  if isinstance(f, io.gfile.GFile):
     return f.size()
   else:
     was = f.tell()
@@ -90,7 +107,7 @@ import time
 
 def try_open(filename, *args, **kws):
   if filename.startswith("gs://"):
-    return gfile.FastGFile(filename, *args, **kws)
+    return io.gfile.GFile(filename, *args, **kws)
   else:
     return open(filename, *args, **kws)
 
@@ -118,7 +135,7 @@ def tokens_from_buffer(data, stride):
   return np.frombuffer(data, dtype=np.uint16 if stride == 2 else np.int32)
 
 def tokens_to_file(out, chunks, stride):
-  if isinstance(out, gfile.FastGFile):
+  if isinstance(out, io.gfile.GFile):
     data = tokens_to_buffer(chunks, stride)
     out.write(data)
   else:
