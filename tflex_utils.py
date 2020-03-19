@@ -47,6 +47,8 @@ def for_each_line(infile, total=None, verbose=True, ignore_errors=True, message=
         except UnicodeDecodeError:
           pass
 
+import time
+
 def ensure_open(filename, *args, **kws):
   while True:
     try:
