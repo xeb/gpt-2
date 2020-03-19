@@ -181,16 +181,16 @@ class TrainCounter(object):
       self.lock.release()
 
 tflex.pinned_sessions = []
-tflex.session_timeout_in_ms = 600000
-tflex.eval_lightweight_timeout = 10000
-tflex.load_lightweight_timeout = 10000
+tflex.session_timeout_in_ms = 1200000
+tflex.eval_lightweight_timeout = 20000
+tflex.load_lightweight_timeout = 20000
 #tflex.initialize_timeout = 60000
-tflex.initialize_timeout = 10*60000
-tflex.context_load_timeout = 10000
+tflex.initialize_timeout = 20*60000
+tflex.context_load_timeout = 20000
 tflex.ensure_on_init = True
 tflex.release_trainer_sema = True
-tflex.tpu_init_timeout = 30000
-tflex.summary_log_timeout = 10000
+tflex.tpu_init_timeout = 60000
+tflex.summary_log_timeout = 20000
 tflex.use_global_data_sampler = True
 tflex.shuffle_cycles = True
 
@@ -314,7 +314,7 @@ def trainer_open_summary_log(run_name, target, suffix=None):
 
 tflex.trainer_open_summary_log = trainer_open_summary_log
 
-def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', timeout=tflex.session_timeout_in_ms, session=None, counter=None):
+def trainer_create(args, hparams, enc, scope='model', target='auto', timeout=tflex.session_timeout_in_ms, session=None, counter=None):
     self = TrainGPT2()
     core = args.device
     if '::' in target:
@@ -326,7 +326,6 @@ def trainer_create(args, hparams, sampler, enc, scope='model', target='auto', ti
     self.dead = False
     self.args = args
     self.hparams = hparams
-    self.sampler = sampler
     self.enc = enc
     if session is None:
       config = config_pb2.ConfigProto(operation_timeout_in_ms=timeout)
@@ -484,6 +483,10 @@ def trainer_sample_batch(self, count=None, length=None):
         self.say('Generating %d samples of %d tokens...' % (tflex.sample_ahead, size))
         for i in tqdm.tqdm(range(0, tflex.sample_ahead, tflex.sample_step)):
           for j in range(tflex.sample_step):
+            if not hasattr(tflex, 'data_sampler') or tflex.data_sampler is None:
+              print('Loading dataset...')
+              seed = None if tflex.args.seed < 0 else tflex.args.seed
+              tflex.data_sampler = tflex.make_sampler(dataset=tflex.args.dataset, enc=tflex.enc, seed=seed, combine=tflex.args.combine)
             tokens = tflex.data_sampler.sample(size)
             #print(repr(tokens), repr(size), len(tokens))
             if len(tokens) >= size:
@@ -1048,9 +1051,9 @@ def parallelize(xs, thunk, *args):
 
 #tflex.read_deadline = 20000
 #tflex.write_deadline = 20000
-tflex.read_deadline = 60000
-tflex.write_deadline = 120000
-tflex.reset_deadline = 120000
+tflex.read_deadline  = 120000
+tflex.write_deadline = 240000
+tflex.reset_deadline = 240000
 
 def assign_values(variables, values, session=None, timeout_in_ms=tflex.write_deadline):
   session = session or tf.get_default_session()
@@ -1179,7 +1182,7 @@ tflex.update_trainers = update_trainers
 def main():
     args = parser.parse_args()
     tflex.args = args
-    enc = encoder.get_encoder(args.model_name)
+    tflex.enc = encoder.get_encoder(args.model_name)
     hparams = model.default_hparams()
     hparams.res_dropout = args.dropout
     hparams.attn_dropout = args.dropout
@@ -1227,9 +1230,11 @@ def main():
         data_sampler = TextSampler(dataset, enc, seed=seed, use_locking=True)
       return data_sampler
 
-    print('Loading dataset...')
-    seed = None if args.seed < 0 else args.seed
-    tflex.data_sampler = make_sampler(dataset=args.dataset, enc=enc, seed=seed, combine=args.combine)
+    tflex.make_sampler = make_sampler
+
+    #print('Loading dataset...')
+    #seed = None if args.seed < 0 else args.seed
+    #tflex.data_sampler = make_sampler(dataset=args.dataset, enc=enc, seed=seed, combine=args.combine)
 
     print('Training...')
     counter = 1
@@ -1251,10 +1256,10 @@ def main():
     tflex.pending_trainers = []
     tflex.pinned_trainers = []
     tflex.trainers_sema = threading.BoundedSemaphore(value=60)
-    tflex.trainers_init_sema = threading.BoundedSemaphore(value=150)
-    tflex.trainers_load_sema = threading.BoundedSemaphore(value=40)
+    tflex.trainers_init_sema = threading.BoundedSemaphore(value=6) # 150
+    tflex.trainers_load_sema = threading.BoundedSemaphore(value=6) # 10
     tflex.trainers_lock = threading.RLock()
-    tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, sampler=tflex.data_sampler, enc=enc, target=tflex.targets[0], counter=traincounter)
+    tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, enc=tflex.enc, target=tflex.targets[0], counter=traincounter)
     #tflex.trainer.ensure()
     #if not tflex.trainer.thread.is_alive():
     #  tflex.trainer.thread.start()
@@ -1274,12 +1279,12 @@ def main():
           tflex.pending_trainers.append(target)
         try:
           with tflex.trainers_sema:
-            sampler = tflex.data_sampler
-            if not tflex.use_global_data_sampler:
-              sampler = make_sampler(dataset=args.dataset, enc=enc, seed=seed, combine=args.combine)
+            #sampler = tflex.data_sampler
+            #if not tflex.use_global_data_sampler:
+            #  sampler = make_sampler(dataset=args.dataset, enc=enc, seed=seed, combine=args.combine)
             #trainer = tflex.trainer_create(args=args, hparams=hparams, sampler=sampler, enc=enc, target=target, counter=traincounter)
             trainer = tflex.trainer_fork(existing=tflex.trainer, target=target)
-            trainer.sampler = sampler
+            #trainer.sampler = sampler
           tflex.pinned_trainers.append(trainer)
           #if tflex.release_trainer_sema:
           #  tflex.trainers_sema.release()
