@@ -339,7 +339,7 @@ def trainer_create(args, hparams, enc, scope='model', target='auto', timeout=tfl
           config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
       options = config_pb2.RunOptions(report_tensor_allocations_upon_oom=(not args.no_report_tensor_allocations_upon_oom))
       self.options = options
-      session = tflex.Session(target=target, config=config, init_tpu=args.init_tpu)
+      session = tflex.MonitoredSession(target=target, config=config)
       tflex.pinned_sessions.append([target, session]) # prevent GC'ing sessions, because the destructor seems to freeze.
     with tf.Session(target=target, graph=tf.Graph(), config=session.config) as sess:
       with sess.graph.as_default():
