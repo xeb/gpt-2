@@ -265,7 +265,6 @@ class TokenSampler(object):
 class TokenStreamer(object):
   def __init__(self, fp, enc, use_locking=False):
     self.fp = fp
-    self.line_count = len(fp) if isinstance(fp, list) else tflex_utils.count_lines(fp)
     self.enc = enc
     self.lock = threading.Lock() if use_locking else None
 
@@ -275,7 +274,7 @@ class TokenStreamer(object):
         self.lock.acquire()
       start = time.time()
       total = 0
-      for i, line in tflex_utils.for_each_line(self.fp, total=self.line_count, verbose=verbose, **kws):
+      for i, line in tflex_utils.for_each_line(self.fp, verbose=verbose, **kws):
         #import pdb; pdb.set_trace()
         tokens = self.enc.encode(line) if isinstance(line, str) else line
         yield tokens

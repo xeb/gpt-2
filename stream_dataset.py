@@ -40,7 +40,7 @@ def main():
     streamer = TokenStreamer(chunks, enc=enc)
     text_mode = not isinstance(chunks, list)
     output_text_mode = args.out_tok == '-' 
-    total_size = sum([len(x) for x in chunks]) if not text_mode else streamer.line_count
+    total_size = sum([len(x) for x in chunks]) if not text_mode else 0
     if not output_text_mode:
       assert args.out_tok.endswith('.tok16') or args.out_tok.endswith('.tok32')
     half = args.out_tok.endswith('.tok16')
