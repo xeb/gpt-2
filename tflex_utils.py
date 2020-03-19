@@ -3,36 +3,38 @@ import sys
 from tensorflow import gfile
 import time
 
-def file_size(infile):
-  if isinstance(infile, str):
-    with try_open(infile) as f:
+def file_size(f):
+  if isinstance(f, str):
+    with try_open(f) as f:
       return file_size(f)
-  if isinstance(infile, gfile.FastGFile):
-    return infile.size()
+  if isinstance(f, gfile.FastGFile):
+    return f.size()
   else:
-    was = infile.tell()
+    was = f.tell()
     try:
-      infile.seek(0, 2)
-      return infile.tell()
+      f.seek(0, 2)
+      pos = f.tell()
     finally:
-      infile.seek(was, 0)
+      f.seek(was, 0)
+    return pos
 
-def count_lines(infile):
-    if isinstance(infile, str):
-      with try_open(infile) as f:
+def count_lines(f):
+    if isinstance(f, str):
+      with try_open(f) as f:
         return count_lines(f)
     n = 0
     prev = None
-    size = file_size(infile)
-    assert infile.tell() == 0
+    size = file_size(f)
+    f.seek(0)
     prev_pos = 0
+    pos = 0
     update_time = time.time() + 1.0
     with tqdm.tqdm(total=size, desc="Counting lines in text file...") as pbar:
       while True:
         try:
-          for line in infile:
+          for line in f:
+            pos += len(line)
             if time.time() > update_time:
-              pos = infile.tell()
               pbar.update(pos - prev_pos)
               prev_pos = pos
               update_time = time.time() + 1.0
@@ -45,28 +47,31 @@ def count_lines(infile):
             sys.stderr.write('Error on line %d after %s\n' % (n+1, repr(prev)))
           if not ignore_errors:
             raise
+    # Reset the file iterator, or later calls to f.tell will
+    # raise an IOError or OSError:
+    f.seek(0)
     return n
 
-def for_each_line(infile, total=None, verbose=True, ignore_errors=True, message=None):
-    if isinstance(infile, str):
-      with try_open(infile) as f:
+def for_each_line(f, total=None, verbose=True, ignore_errors=True, message=None):
+    if isinstance(f, str):
+      with try_open(f) as f:
         for i, line in for_each_line(f, total=total, verbose=verbose, ignore_errors=ignore_errors, message=message):
           yield i, line
     #import pdb; pdb.set_trace()
-    n = count_lines(infile) if total is None else total
+    n = count_lines(f) if total is None else total
     #import pdb; pdb.set_trace()
     if message:
       print('%s %d lines...' % (message, n))
     i = 0
-    if isinstance(infile, list):
-      for line in tqdm.tqdm(infile, total=n) if verbose else infile:
+    if isinstance(f, list):
+      for line in tqdm.tqdm(f, total=n) if verbose else f:
         yield i, line
         i += 1
     else:
       while True:
         try:
           n -= i
-          for line in tqdm.tqdm(infile, total=n) if verbose else infile:
+          for line in tqdm.tqdm(f, total=n) if verbose else f:
             yield i, line
             i += 1
           break
