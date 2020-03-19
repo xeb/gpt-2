@@ -272,7 +272,7 @@ def trainer_fork(existing, target):
     self = TrainGPT2()
     for k, v in existing.__dict__.items():
       setattr(self, k, v)
-    session = tflex.MonitoredSession(target=target, graph=existing.sess.graph, config=existing.sess.config, init_tpu=self.args.init_tpu)
+    session = tflex.MonitoredSession(target=target, graph=existing.sess.graph, config=existing.sess.config)
     if self.args.init_tpu:
       print('Initializing TPU...', session.target)
       with tf.Session(target=target, graph=tf.Graph(), config=existing.sess.config) as sess:
