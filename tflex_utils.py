@@ -10,8 +10,12 @@ def file_size(infile):
   if isinstance(infile, gfile.FastGFile):
     return infile.size()
   else:
-    infile.seek(0, 2)
-    return infile.tell()
+    was = infile.tell()
+    try:
+      infile.seek(0, 2)
+      return infile.tell()
+    finally:
+      infile.seek(was, 0)
 
 def count_lines(infile):
     if isinstance(infile, str):
@@ -20,14 +24,15 @@ def count_lines(infile):
     n = 0
     prev = None
     size = file_size(infile)
-    prev_pos = infile.tell()
+    infile.seek(0, 0)
+    prev_pos = 0
     update_time = time.time() + 1.0
     with tqdm.tqdm(total=size, desc="Counting lines in text file...") as pbar:
       while True:
         try:
           for line in infile:
-            pos = infile.tell()
             if time.time() > update_time:
+              pos = infile.tell()
               pbar.update(pos - prev_pos)
               prev_pos = pos
               update_time = time.time() + 1.0
