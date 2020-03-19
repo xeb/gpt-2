@@ -1279,7 +1279,7 @@ def main():
             tflex.trainer = tflex.trainer_create(args=args, hparams=hparams, enc=tflex.enc, target=target, counter=traincounter)
             pbar.update(1)
             break
-          except:
+          except DeadlineExceededError:
             import traceback
             traceback.print_exc()
             time.sleep(0.1)
