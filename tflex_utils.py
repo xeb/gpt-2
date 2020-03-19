@@ -1,6 +1,7 @@
 import tqdm
 import sys
 from tensorflow import gfile
+import time
 
 def file_size(infile):
   if isinstance(infile, str):
@@ -20,13 +21,16 @@ def count_lines(infile):
     prev = None
     size = file_size(infile)
     prev_pos = infile.tell()
+    update_time = time.time() + 1.0
     with tqdm.tqdm(total=size, desc="Counting lines in text file...") as pbar:
       while True:
         try:
           for line in infile:
             pos = infile.tell()
-            pbar.update(pos - prev_pos)
-            prev_pos = pos
+            if time.time() > update_time:
+              pbar.update(pos - prev_pos)
+              prev_pos = pos
+              update_time = time.time() + 1.0
             n += 1
             prev = line
             #print(n)
