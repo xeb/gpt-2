@@ -120,9 +120,13 @@ def tokens_from_buffer(data, stride):
   return np.frombuffer(data, dtype=np.uint16 if stride == 2 else np.int32)
 
 def tokens_to_file(out, chunks, stride):
-  assert stride in [2, 4]
-  tokens = np.array(chunks, dtype=np.uint16 if stride == 2 else np.int32)
-  tokens.tofile(out)
+  if isinstance(out, gfile.FastGFile):
+    data = tokens_to_buffer(chunks, stride)
+    out.write(data)
+  else:
+    assert stride in [2, 4]
+    tokens = np.array(chunks, dtype=np.uint16 if stride == 2 else np.int32)
+    tokens.tofile(out)
 
 def tokens_from_file(f, stride):
   assert stride in [2, 4]
