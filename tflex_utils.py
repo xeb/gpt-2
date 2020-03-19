@@ -111,9 +111,7 @@ import io
 def tokens_to_buffer(chunks, stride):
   assert stride in [2, 4]
   tokens = np.array(chunks, dtype=np.uint16 if stride == 2 else np.int32)
-  out = io.BytesIO()
-  tokens.tofile(out)
-  return out.getvalue()
+  return tokens.tobytes()
 
 def tokens_from_buffer(data, stride):
   assert stride in [2, 4]
