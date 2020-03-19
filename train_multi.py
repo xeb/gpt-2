@@ -342,7 +342,9 @@ def trainer_create(args, hparams, enc, scope='model', target='auto', timeout=tfl
       self.options = options
       session = tflex.Session(target=target, config=config)
       tflex.pinned_sessions.append([target, session]) # prevent GC'ing sessions, because the destructor seems to freeze.
-    with tf.Session(target=target, graph=tf.Graph(), config=session.config) as sess:
+
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=tflex.tpu_init_timeout)
+    with tf.Session(target=target, graph=tf.Graph(), config=config) as sess:
       with sess.graph.as_default():
         if args.init_tpu:
           print('Initializing TPU...', session.target)
