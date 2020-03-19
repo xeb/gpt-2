@@ -75,15 +75,16 @@ def count_lines(f, verbose=True, ignore_errors=True):
 
 def for_each_line(f, total=None, verbose=True, ignore_errors=True, message=None):
     if isinstance(f, str):
-      with try_open(f) as f:
-        for i, line in for_each_line(f, total=total, verbose=verbose, ignore_errors=ignore_errors, message=message):
+      with try_open(f) as infile:
+        for i, line in for_each_line(infile, total=total, verbose=verbose, ignore_errors=ignore_errors, message=message):
           yield i, line
-    i = 0
-    if isinstance(f, list):
+    elif isinstance(f, list):
+      i = 0
       for line in tqdm.tqdm(f) if verbose else f:
         yield i, line
         i += 1
     else:
+      i = 0
       prev = None
       size = file_size(f)
       pos = 0
@@ -91,7 +92,7 @@ def for_each_line(f, total=None, verbose=True, ignore_errors=True, message=None)
       n = 0
       while True:
         try:
-          with tqdm.tqdm(f, total=size) as pbar:
+          with tqdm.tqdm(total=size) as pbar:
             for line in f:
               yield i, line
               i += 1
