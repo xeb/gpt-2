@@ -18,7 +18,7 @@ def file_size(f):
       f.seek(was, 0)
     return pos
 
-def count_lines(f):
+def count_lines(f, verbose=True, ignore_errors=True):
     if isinstance(f, str):
       with try_open(f) as f:
         return count_lines(f)
@@ -57,26 +57,32 @@ def for_each_line(f, total=None, verbose=True, ignore_errors=True, message=None)
       with try_open(f) as f:
         for i, line in for_each_line(f, total=total, verbose=verbose, ignore_errors=ignore_errors, message=message):
           yield i, line
-    #import pdb; pdb.set_trace()
-    n = count_lines(f) if total is None else total
-    #import pdb; pdb.set_trace()
-    if message:
-      print('%s %d lines...' % (message, n))
     i = 0
     if isinstance(f, list):
-      for line in tqdm.tqdm(f, total=n) if verbose else f:
+      for line in tqdm.tqdm(f) if verbose else f:
         yield i, line
         i += 1
     else:
+      prev = None
+      pos = 0
+      size = file_size(f)
+      n = 0
       while True:
         try:
-          n -= i
-          for line in tqdm.tqdm(f, total=n) if verbose else f:
-            yield i, line
-            i += 1
-          break
+          with tqdm.tqdm(f, total=size) as pbar:
+            for line in f:
+              yield i, line
+              i += 1
+              pos += len(line)
+              pbar.moveto(pos)
+              prev = line
+            break
         except UnicodeDecodeError:
-          pass
+          n += 1
+          if verbose:
+            sys.stderr.write('Error on line %d after %s\n' % (i+n+1, repr(prev)))
+          if not ignore_errors:
+            raise
 
 import time
 
