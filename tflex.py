@@ -590,13 +590,14 @@ def freeze_forever():
 _quit = False
 
 import sys
+import posix
 
 @register_command
 def quit():
   global _quit
   if _quit:
-    print("Failed to quit; running sys.exit(1)")
-    sys.exit(1)
+    print("Failed to quit; running posix.exit(1)")
+    posix._exit(1)
   else:
     print("Quitting...")
     _quit = True
