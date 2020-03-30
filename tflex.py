@@ -592,15 +592,19 @@ _quit = False
 import sys
 import posix
 
+state.quit_immediately = True
+
 @register_command
 def quit():
   global _quit
-  if _quit:
-    print("Failed to quit; running posix.exit(1)")
+  if _quit or state.quit_immediately:
     posix._exit(1)
   else:
-    print("Quitting...")
     _quit = True
+
+@register_command
+def quit_immediately():
+  posix._exit(1)
 
 def should_quit():
   return _quit
