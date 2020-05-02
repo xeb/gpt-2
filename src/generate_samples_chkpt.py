@@ -96,7 +96,6 @@ def interact_model(
             temperature=temperature, top_k=top_k, top_p=top_p, penalize=penalize
         )
 
-        builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
         saver = tflex.Saver(reshape=True)
         if restore_from is None:
           restore_from = os.path.join('models', model_name)

@@ -23,6 +23,7 @@ def main():
     out = sys.stdout if args.outfile == '-' else open(args.outfile, "w")
     for i, line in tflex_utils.for_each_line(args.infile, message='Fixing'):
       fixed = fix_text(line)
+      #fixed = fixed.decode('utf-8', 'ignore').encode('utf-8')
       out.write(fixed)
       if i % 100 == 0:
         out.flush()

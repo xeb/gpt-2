@@ -1,3 +1,73 @@
+# gpt-2 / "dixie"
+This is a fork (of a fork) of OpenAI's GPT-2. It is modified to include a server that hosts multiple models in order to generate text. The purpose is to create a chatbot on Alexa. I've included a sanitizer for use in the "chatbot" scenario. Below is a bit about how I'm using this repository, but of course, YMMV. I called it "dixie" after "Dixie Flatline" from William Gibson's Neuromancer (who was a virtual personality construct).
+
+## Training Data Format
+First, get your training dataset in the following format:
+```
+1|mom|Hi! <EOM>
+1|mom|How are you doing, Mom? <EOM>
+0|mom|Hi Son. <EOM>
+0|mom|I'm doing great, how are you? <EOM>
+1|mom|Fantastic! <EOM>
+```
+
+This is a pipe deliminted format for defining chat sequences. The first character indicates if "you" sent the message. After the pipe separators you define the audience of the chat. Then the message content, then an ```<EOM>``` to note the end of the message.
+
+It's best to get as much data as possible. Anything less than ~2MB is probably going to overfit.
+
+## Setting Up Dependencies
+Next, make sure you have CUDA 10.0 install on your system. Then you should create a virtualenv:
+```
+virtualenv --python=python3.7 venv
+. venv/bin/activate
+```
+
+There are some dependencies to setup, so do:
+```
+pip install -r requirements.txt
+```
+
+Of course you need to download the model with:
+```
+python download_model.py 124M
+```
+
+There are other model weights available (e.g. 355M), so check your GPU capacity. You'll need 16GB for the 355M model.
+
+## Training
+I setup different training scripts prefixed with ```train-``` to kick off training for individual data sets. The format of combined.train is above. Here's an example of one of those scripts:
+```
+#!/bin/bash
+DATA_PATH=/home/xeb/projects/dixie/data/chatbot/combined.train
+GPT2_PATH=/home/xeb/projects/dixie-gpt-2
+MODEL_NAME=124M
+PYTHONPATH=src $GPT2_PATH/venv/bin/python3.7 $GPT2_PATH/train.py \
+  --dataset $DATA_PATH \
+  --model_name=$MODEL_NAME \
+  --save_on_ctrlc \
+  --batch_size 1
+```
+
+## Server
+After you have a fine-tuned model ready to go, you should setup ```server_config.json``` from the sample, do something like:
+```
+cp server_config.json.sample server_config.json
+```
+
+And edit the file to point to the models you want to load. The ```server.py``` implementation will "hotswap" models. Yes, there are race-conditions, but oh well. This is definitely not for prod!
+
+Now fire-up the server with:
+```
+./server.sh
+```
+
+You can run tests with cURL commands. Like the below with assumes ```server_config.json``` has a "general" model defined.
+```
+time curl -vvv -d'{"model_key":"general","raw_text":"How big is the earth?\n"}' -H"Content-Type: application/json" http://localhost:12345/invocations
+```
+
+---------
+
 # gpt-2
 
 Code from the paper ["Language Models are Unsupervised Multitask Learners"](https://d4mucfpksywv.cloudfront.net/better-language-models/language-models.pdf).

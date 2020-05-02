@@ -31,6 +31,47 @@ def clear_output(wait=False):
 def is_ascii(s):
     return all(ord(c) < 128 for c in s)
 
+
+def export(self, last_checkpoint, output_dir):
+    """Builds a prediction graph and xports the model.
+    Args:
+        last_checkpoint: Path to the latest checkpoint file from training.
+        output_dir: Path to the folder to be used to output the model.
+    """
+    print('Exporting prediction graph to %s', output_dir)
+    with tf.Session(graph=tf.Graph()) as sess:
+        # Build and save prediction meta graph and trained variable values.
+        inputs, outputs = self.build_prediction_graph()
+        init_op = tf.global_variables_initializer()
+        sess.run(init_op)
+        self.restore_from_checkpoint(sess, self.inception_checkpoint_file,
+                                    last_checkpoint)
+        signature_def = build_signature(inputs=inputs, outputs=outputs)
+        signature_def_map = {
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signature_def
+        }
+        builder = saved_model_builder.SavedModelBuilder(output_dir)
+        builder.add_meta_graph_and_variables(
+            sess,
+            tags=[tag_constants.SERVING],
+            signature_def_map=signature_def_map)
+        builder.save()
+
+def format_metric_values(self, metric_values):
+"""Formats metric values - used for logging purpose."""
+
+# Early in training, metric_values may actually be None.
+loss_str = 'N/A'
+accuracy_str = 'N/A'
+try:
+    loss_str = '%.3f' % metric_values[0]
+    accuracy_str = '%.3f' % metric_values[1]
+except (TypeError, IndexError):
+    pass
+
+return '%s, %s' % (loss_str, accuracy_str)
+
+
 def interact_model(
     model_name='117M',
     restore_from=None,
@@ -86,6 +127,7 @@ def interact_model(
         raise ValueError("Can't get samples longer than length: %s" % length)
 
     with tflex.Session(graph=tf.Graph()) as sess:
+
         context = tf.placeholder(tf.int32, [batch_size, None])
         np.random.seed(seed)
         tf.set_random_seed(seed)
@@ -101,7 +143,16 @@ def interact_model(
           restore_from = os.path.join('models', model_name)
         ckpt = tflex.latest_checkpoint(restore_from)
         saver.restore(sess, ckpt)
-        saver2 = tf.train.Saver()
+        builder = tf.saved_model.builder.SavedModelBuilder('exports')
+        builder.add_meta_graph_and_variables(sess,
+                                    [tf.saved_model.tag_constants.TRAINING, tag_constants.SERVING],
+                                    signature_def_map=None,
+                                    assets_collection=None)
+        builder.add_meta_graph(["bar-tag", "baz-tag"])
+        builder.save() 
+        
+
+        saver2 = tf.compat.v1.train.Saver()
         counter = int(ckpt.split('-')[-1].split('.')[0])
         saver2.save(
         sess,

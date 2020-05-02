@@ -42,6 +42,10 @@ class Session(tf.Session):
       sess.run(tpu.initialize_system())
     return sess
 
+  def close(self):
+    print(">>> CLOSING SESSION")
+    super().close()
+    
 def split_by_params(vs, n=200e6, f=None):
   if f is None:
     f = lambda x: np.prod(x.shape.as_list())
@@ -99,7 +103,12 @@ def grab_values(variables, reader, reshape=False):
     yield variable, value
 
 def assign_values(variables, values, session=None):
-  session = session or tf.get_default_session()
+  if session is None:
+    print(">>>>!! --- LOADED DEFAULT----")
+    session = tf.get_default_session()
+  else:
+    print(">>>>!! --- SESSION IS NOT NONE")
+
   ops = [x.initializer for x in variables]
   vals = dict([(x.initializer.inputs[1], value) for x, value in zip(variables, values)])
   #for x, (k, v) in zip(variables, vals.items()):
